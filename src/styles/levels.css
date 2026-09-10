@@ -1,0 +1,70 @@
+/* Levels scan controls — quiet chips, accent only on the active selection. */
+
+.lev-controls {
+  margin: 18px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lev-control-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lev-control-row .label {
+  font-size: var(--t-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  width: 56px;
+  flex-shrink: 0;
+}
+
+.lev-threshold,
+.lev-sectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lev-thresh,
+.lev-sector {
+  background: var(--bg-0);
+  border: 0.5px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  padding: 5px 11px;
+  cursor: pointer;
+}
+.lev-sector {
+  font-family: var(--font-ui);
+}
+.lev-thresh:hover,
+.lev-sector:hover {
+  color: var(--text-0);
+  border-color: var(--accent-dim);
+}
+.lev-thresh.on,
+.lev-sector.on {
+  background: var(--bg-sel);
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* Side tag in results */
+.lev-side {
+  font-size: var(--t-small);
+  text-transform: lowercase;
+}
+.lev-side.up {
+  color: var(--up);
+}
+.lev-side.down {
+  color: var(--down);
+}
+
+.rot-radar i {
+  font-size: 15px;
+}

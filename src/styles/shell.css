@@ -1,0 +1,106 @@
+.shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---- Sidebar ---- */
+.sidebar {
+  width: 192px;
+  flex-shrink: 0;
+  background: var(--bg-0);
+  border-right: 0.5px solid var(--line);
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-mark {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 18px 22px;
+}
+.mark-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--line);
+  transition: background 0.3s;
+}
+.mark-dot.live { background: var(--accent); }
+.mark-label {
+  font-size: var(--t-small);
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 8px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--t-body);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.12s, background 0.12s;
+}
+.nav-item i { font-size: 18px; }
+.nav-item:hover { color: var(--text-1); background: var(--bg-1); }
+
+/* The accent appears ONLY here — the one selected tool. */
+.nav-item.active {
+  background: var(--bg-2);
+  color: var(--text-0);
+}
+.nav-item.active i { color: var(--accent); }
+
+.nav-new {
+  margin-top: auto;
+  margin-left: 8px;
+  margin-right: 8px;
+  color: var(--text-2);
+}
+
+/* ---- Content ---- */
+.content {
+  flex: 1;
+  background: var(--bg-1);
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.boot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--pad-view);
+  color: var(--text-2);
+  font-size: var(--t-body);
+}
+.boot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boot-dot { animation: none; }
+}

@@ -1,0 +1,109 @@
+.cal {
+  background: var(--bg-0);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  width: 280px;
+  flex-shrink: 0;
+}
+
+.cal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.cal-month {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-0);
+}
+.cal-nav {
+  background: transparent;
+  border: 0.5px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-2);
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cal-nav:hover {
+  color: var(--text-0);
+  border-color: var(--accent-dim);
+}
+.cal-nav i { font-size: 15px; }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.cal-dow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  text-align: center;
+  padding-bottom: 6px;
+}
+
+.cal-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border-radius: 6px;
+  color: var(--text-1);
+}
+.cal-day.empty { background: transparent; }
+
+/* Weekends/holidays: visible but inert, clearly non-interactive */
+.cal-day.notrade {
+  color: var(--text-2);
+  opacity: 0.35;
+}
+
+/* Trading days: clickable */
+.cal-day.trade {
+  cursor: pointer;
+}
+.cal-day.trade:hover {
+  background: var(--bg-2);
+  color: var(--text-0);
+}
+
+/* In-range fill — faint steel tint */
+.cal-day.inrange {
+  background: rgba(77, 184, 196, 0.12);
+  color: var(--text-0);
+}
+
+/* The two endpoints — solid steel, the one accent */
+.cal-day.endpoint {
+  background: var(--accent);
+  color: var(--bg-0);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cal-foot {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 0.5px solid var(--line-faint);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cal-hint {
+  font-size: var(--t-small);
+  color: var(--text-2);
+}
+.cal-span {
+  font-size: var(--t-small);
+  color: var(--accent);
+}

@@ -1,0 +1,184 @@
+/* USD/CHF tab. Same restraint as the rest: charcoal surface, one accent on the
+   active range button only, direction tints reserved for the change numbers. */
+
+.fx {
+  padding: var(--pad-view);
+}
+
+.fx-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 0.5px solid var(--line);
+  padding-bottom: 16px;
+}
+.fx-head h1 {
+  font-size: var(--t-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.fx-head h1 .sub {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--text-2);
+  margin-left: 8px;
+  letter-spacing: 0;
+}
+.fx-head-right {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: var(--t-small);
+  color: var(--text-2);
+}
+.fx-cached {
+  font-size: var(--t-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  border: 0.5px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+
+/* ---- range buttons ---- */
+
+.fx-ranges {
+  display: flex;
+  gap: 2px;
+  margin: 18px 0 4px;
+}
+.fx-range {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 0.5px solid transparent;
+  border-radius: 5px;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.fx-range:hover:not(.active) {
+  color: var(--text-1);
+  background: var(--bg-2);
+}
+.fx-range.active {
+  color: var(--accent);
+  background: var(--bg-sel);
+  border-color: var(--accent-dim);
+}
+.fx-range:disabled {
+  cursor: default;
+}
+
+/* ---- summary strip ---- */
+
+.fx-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 30px;
+  padding: 18px 2px 20px;
+}
+.fx-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.fx-stat-label {
+  font-size: var(--t-label);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-2);
+}
+.fx-stat-value {
+  font-size: 15px;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+/* The rate itself is the headline — one step brighter and larger. */
+.fx-stat-lead .fx-stat-value {
+  font-size: 20px;
+  color: var(--text-0);
+}
+.fx-stat-value.up {
+  color: var(--up);
+}
+.fx-stat-value.down {
+  color: var(--down);
+}
+
+/* ---- chart ---- */
+
+.fx-panel {
+  background: var(--bg-1);
+  border: 0.5px solid var(--line-faint);
+  border-radius: var(--radius-lg);
+  padding: 16px 14px 12px;
+}
+.fx-chart {
+  transition: opacity 140ms ease;
+}
+/* Refetching a new range: dim the old line rather than blanking the panel, so
+   the layout doesn't jump on every click. */
+.fx-chart.stale {
+  opacity: 0.4;
+}
+
+.fx-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--bg-2);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+}
+.fx-tip-rate {
+  font-size: var(--t-body);
+  color: var(--text-0);
+}
+.fx-tip-when {
+  font-size: var(--t-label);
+  color: var(--text-2);
+}
+
+.fx-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 12px 4px 2px;
+  border-top: 0.5px solid var(--line-faint);
+  margin-top: 10px;
+}
+.fx-note {
+  font-size: var(--t-small);
+  color: var(--text-2);
+}
+.fx-asof {
+  font-size: var(--t-label);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.fx-msg {
+  padding: 40px 4px;
+  color: var(--text-2);
+  font-size: var(--t-small);
+}
+.fx-err {
+  color: var(--down);
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 720px) {
+  .fx-summary {
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .fx-foot {
+    flex-direction: column;
+    gap: 6px;
+  }
+}

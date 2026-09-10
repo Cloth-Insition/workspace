@@ -1,0 +1,49 @@
+LEDGER PORT — what changed and how to run
+==========================================
+
+Ledger is now ported into the workspace. Your original 3,728-line component
+is intact — all the stats (SQN, Monte Carlo, bootstrap, R², Kelly, conviction
+buckets, rolling expectancy), charts, the form, exit-reason tracking, and
+scale-in/out all unchanged. Only three things were rewired:
+
+1. PERSISTENCE: window.storage (browser-only, doesn't exist in Tauri) →
+   SQLite via the sidecar. Your trades now live in src-python/workspace.db,
+   a real database, not browser storage. Trades survive properly and are
+   queryable for later cross-tool features.
+
+2. SPY PRICES: the equity-curve SPY overlay used to ask Claude (API + web
+   search) for each close — slow, costs API calls. Now it pulls exact official
+   closes from yfinance via the sidecar (the same source rotation uses).
+   Faster, free, exact.
+
+3. PALETTE: gold accent → steel-cyan, ink tones aligned to the workspace
+   charcoal. Your emerald/crimson were already close to the workspace
+   direction, so they barely moved.
+
+NEW BACKEND FILES (already tested, working):
+  src-python/engine/ledger_db.py   — SQLite trades + key/value store
+  src-python/engine/spy.py         — yfinance SPY lookups, cached
+  src-python/server.py             — +5 Ledger endpoints (overwritten)
+
+NEW/CHANGED FRONTEND:
+  src/tools/Ledger.jsx             — the ported component (new)
+  src/App.tsx                      — renders Ledger on the Ledger tab
+  src/main.tsx                     — imports Tailwind
+  package.json                     — +recharts, lucide-react, tailwind
+  tailwind.config.js, postcss.config.js, src/styles/tailwind.css — new
+
+TO RUN (one extra install step, because Ledger needs new packages):
+
+  cd workspace
+  npm install              <-- pulls recharts, lucide, tailwind
+  npm run tauri dev
+
+The Python side needs nothing new — yfinance/pandas already installed.
+Your DB is created automatically on first save.
+
+WHAT TO EYEBALL:
+  - Click the Ledger tab. It should seed your two demo trades (AVGO, TXT)
+    on first run, then persist anything you add.
+  - The equity curve's SPY line now comes from yfinance — check it draws.
+  - Tailwind's reset MIGHT slightly shift the shell's heading sizes. If the
+    sidebar or rotation view looks a touch off, tell me — it's a one-line fix.

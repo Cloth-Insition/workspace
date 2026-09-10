@@ -1,0 +1,163 @@
+/*
+  Volume panel — sits above the sector table. The universe bar chart is the
+  day-vs-day comparison; the per-sector bars show where today's volume sits
+  relative to each sector's own normal (midpoint line = 1.0× = a normal day).
+*/
+
+.vol {
+  margin: 4px 0 22px;
+  padding: 16px 18px;
+  background: var(--bg-0);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.vol-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.vol-title {
+  font-size: var(--t-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.vol-today {
+  font-size: 15px;
+  color: var(--text-0);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.vol-rel {
+  font-size: var(--t-small);
+}
+.vol-rel.hot {
+  color: var(--accent);
+}
+.vol-rel.cool {
+  color: var(--text-2);
+}
+
+/* Universe daily bar chart */
+.vol-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 80px;
+}
+.vol-bar-wrap {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  cursor: default;
+}
+.vol-bar {
+  width: 100%;
+  background: var(--bg-2);
+  border-radius: 2px 2px 0 0;
+  transition: background 0.12s;
+}
+.vol-bar-wrap:hover .vol-bar {
+  background: var(--line);
+}
+.vol-bar-wrap.today .vol-bar {
+  background: var(--accent);
+}
+
+.vol-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-2);
+}
+.vol-axis-note {
+  font-family: var(--font-ui);
+  letter-spacing: 0.02em;
+}
+
+/* Per-sector relative bars */
+.vol-sectors {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 0.5px solid var(--line-faint);
+}
+.vol-sectors-label {
+  font-size: var(--t-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.vol-sector-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 24px;
+}
+.vol-sector-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.vol-sector-etf {
+  font-size: var(--t-small);
+  color: var(--text-1);
+  width: 38px;
+  flex-shrink: 0;
+}
+.vol-sector-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  background: var(--bg-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.vol-sector-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: var(--text-2);
+  border-radius: 4px;
+}
+.vol-sector-fill.hot {
+  background: var(--accent);
+}
+.vol-sector-fill.cool {
+  background: var(--down);
+  opacity: 0.6;
+}
+/* Midpoint marker = 1.0× (a normal day) */
+.vol-sector-mid {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--line);
+}
+.vol-sector-rel {
+  font-size: var(--t-small);
+  color: var(--text-2);
+  width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.vol-sector-rel.hot {
+  color: var(--accent);
+}
+.vol-sector-rel.cool {
+  color: var(--down);
+}
+
+@media (max-width: 820px) {
+  .vol-sector-grid {
+    grid-template-columns: 1fr;
+  }
+}

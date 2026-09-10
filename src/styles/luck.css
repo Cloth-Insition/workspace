@@ -1,0 +1,264 @@
+.luck-intro {
+  color: var(--text-1);
+  font-size: var(--t-body);
+  line-height: 1.6;
+  max-width: 680px;
+  margin: 14px 0 20px;
+}
+.luck-intro strong {
+  color: var(--text-0);
+}
+
+.luck-table tr.luck-sel td {
+  background: var(--bg-sel);
+}
+.luck-check {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.luck-check.on {
+  color: var(--accent);
+}
+.luck-check i {
+  font-size: 18px;
+}
+
+.luck-iv-head {
+  color: var(--accent) !important;
+}
+.luck-iv-input {
+  width: 70px;
+  background: var(--bg-0);
+  border: 0.5px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: var(--text-0);
+  font-size: var(--t-small);
+  text-align: right;
+  outline: none;
+}
+.luck-iv-input:focus {
+  border-color: var(--accent);
+}
+.luck-iv-dash {
+  color: var(--text-2);
+}
+.luck-iv-stored {
+  color: var(--text-2);
+  font-size: var(--t-small);
+}
+
+.luck-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+}
+.luck-hint {
+  font-size: var(--t-small);
+  color: var(--text-2);
+}
+
+/* ---- Result ---- */
+.luck-result {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 0.5px solid var(--line);
+}
+/* ---- Verdict block ----
+   Replaces the old big-percentage headline. That number was a p-value shown
+   under the label "chance this run was luck", which inverts the conditional:
+   an entirely ordinary run read as a 50/50 coin flip between skill and luck.
+   The verdict is now words, and the raw p sits in the diagnostics row. */
+
+.luck-verdict {
+  border-left: 2px solid var(--line);
+  padding: 2px 0 2px 16px;
+  margin-bottom: 18px;
+}
+.luck-verdict-word {
+  display: block;
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--text-1);
+}
+.luck-verdict-detail {
+  margin-top: 7px;
+  color: var(--text-2);
+  font-size: var(--t-body);
+  line-height: 1.55;
+  max-width: 62ch;
+}
+/* Muted direction language, same as the tables. */
+.luck-verdict.edge {
+  border-left-color: var(--up);
+}
+.luck-verdict.edge .luck-verdict-word {
+  color: var(--up);
+}
+.luck-verdict.poor {
+  border-left-color: var(--down);
+}
+.luck-verdict.poor .luck-verdict-word {
+  color: var(--down);
+}
+.luck-verdict.flat {
+  border-left-color: var(--line);
+}
+.luck-verdict.flat .luck-verdict-word {
+  color: var(--text-0);
+}
+
+.luck-warn {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: rgba(199, 138, 115, 0.08);
+  border: 0.5px solid var(--down);
+  border-radius: var(--radius);
+  padding: 13px 15px;
+  margin-bottom: 18px;
+  color: var(--text-1);
+  font-size: var(--t-small);
+  line-height: 1.55;
+}
+.luck-warn i {
+  color: var(--down);
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.luck-warn strong {
+  color: var(--down);
+}
+
+.luck-combine {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  font-size: var(--t-small);
+  color: var(--text-2);
+  margin-bottom: 16px;
+}
+
+.luck-breakdown {
+  margin-bottom: 20px;
+}
+
+.luck-caveats {
+  background: var(--bg-0);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+}
+.luck-caveats-label {
+  font-size: var(--t-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.luck-caveats ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.luck-caveats li {
+  color: var(--text-1);
+  font-size: var(--t-small);
+  line-height: 1.55;
+}
+.luck-math-note {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 0.5px solid var(--line-faint);
+  color: var(--text-2);
+  font-size: var(--t-small);
+  line-height: 1.55;
+}
+.luck-math-note em {
+  color: var(--text-1);
+  font-style: italic;
+}
+
+/* Softer variant of the warning box for informational flags (rho cap, trades
+   that could not be market-adjusted) — same shape, no alarm colour. */
+.luck-warn-soft {
+  background: var(--bg-2);
+  border-color: var(--line);
+}
+.luck-warn-soft i {
+  color: var(--text-2);
+}
+.luck-warn-soft strong {
+  color: var(--text-1);
+}
+
+.luck-secondary {
+  color: var(--text-2);
+  opacity: 0.75;
+}
+
+/* A capped rho is a caveat on that row, not a result — mark it quietly. */
+.luck-capped {
+  color: var(--text-2);
+}
+.luck-cap-mark {
+  margin-left: 3px;
+  font-size: 9px;
+  vertical-align: super;
+  color: var(--text-2);
+}
+.luck-row-unadj td {
+  opacity: 0.72;
+}
+.luck-flag {
+  margin-left: 5px;
+  color: var(--text-2);
+  cursor: help;
+}
+.luck-flag i {
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+/* ---- Sample-size read ----
+   Sits directly under the verdict because the verdict is not interpretable
+   without it: "No evidence of edge" at n=6 means the test is blind, while at
+   n=200 it means a real edge would have surfaced. */
+.luck-sample {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  background: var(--bg-1);
+  border: 0.5px solid var(--line-faint);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 18px;
+}
+.luck-sample i {
+  color: var(--text-2);
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.luck-sample p {
+  color: var(--text-1);
+  font-size: var(--t-small);
+  line-height: 1.6;
+  max-width: 70ch;
+}
+/* The one case where the sample actually settled the question. */
+.luck-sample.resolved {
+  border-color: var(--accent-dim);
+}
+.luck-sample.resolved i {
+  color: var(--accent);
+}

@@ -1,0 +1,69 @@
+/*
+  Design tokens — the whole visual identity in one place.
+
+  The premium feel is restraint, not addition: a near-monochrome charcoal
+  surface, ONE accent (steel) that appears only on the active/selected thing,
+  and up/down rendered in muted sea-green / faded clay so they never shout.
+  Whitespace and type hierarchy do the rest of the work.
+*/
+
+:root {
+  /* Surfaces — three steps of charcoal, low contrast between them */
+  --bg-0: #0f1216;          /* app background, deepest */
+  --bg-1: #14181d;          /* panels, content area */
+  --bg-2: #1a1f25;          /* raised rows, inputs on hover */
+  --bg-sel: #1c2530;        /* selected row tint (cool, toward the accent) */
+
+  /* Lines — hairlines, barely there */
+  --line-faint: #20262d;
+  --line: #2a313a;
+
+  /* Text — off-white down to muted, never pure white */
+  --text-0: #e7eaee;        /* primary numerals, headers */
+  --text-1: #aab1ba;        /* secondary, sector names */
+  --text-2: #6b7480;        /* labels, timestamps, hints */
+
+  /* The single accent. Steel-cyan. Used ONLY for selection/focus/active. */
+  --accent: #4db8c4;
+  --accent-dim: #3a8c95;
+
+  /* Direction — muted on purpose. Not pine, not vermilion. */
+  --up: #6fb89e;            /* sea-green, desaturated */
+  --down: #c78a73;          /* faded clay */
+
+  /* A single restrained gold thread, reserved for the benchmark row only. */
+  --benchmark: #b9a06a;
+
+  /* Type scale — deliberate jumps, not a uniform ramp */
+  --t-display: 22px;        /* view title */
+  --t-body: 14px;           /* table data */
+  --t-label: 11px;          /* uppercase labels */
+  --t-small: 12px;          /* timestamps, footnotes */
+
+  /* Spacing rhythm */
+  --pad-view: 26px;
+  --radius: 8px;
+  --radius-lg: 11px;
+
+  --font-ui: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: var(--font-ui);
+  font-size: var(--t-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures everywhere numbers appear — decimals stack, columns align.
+   This single property is most of what makes financial tools feel engineered. */
+.mono, table td, table th {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+::selection { background: var(--accent-dim); color: var(--bg-0); }

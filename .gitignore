@@ -1,0 +1,27 @@
+# Secrets — Turso URL/token live in .env, never in the repo
+.env
+.env.*
+
+# Live database (and WAL/SHM sidecars) — real trade data, never committed
+*.db
+*.db-shm
+*.db-wal
+*.db.bak
+backups/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+dist/
+
+# Tauri / Rust
+src-tauri/target/
+
+# Editor noise
+.DS_Store
+Thumbs.db

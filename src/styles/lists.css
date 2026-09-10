@@ -1,0 +1,326 @@
+/*
+  Lists — quiet by design. Inherits the workspace tokens. The one moment of
+  colour is the steel check when an item is done; everything else stays in the
+  charcoal/grey register so it reads as the same app as Rotation and Ledger.
+*/
+
+.lists {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.lists-msg {
+  padding: var(--pad-view);
+  color: var(--text-2);
+}
+
+/* ---- Left rail: the lists themselves ---- */
+.lists-rail {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 0.5px solid var(--line);
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.lists-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px 14px;
+}
+.lists-rail-title {
+  font-size: var(--t-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.lists-add-btn {
+  background: transparent;
+  border: 0.5px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-2);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.lists-add-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+.lists-add-btn i {
+  font-size: 15px;
+}
+
+.lists-rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 8px;
+}
+.lists-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--t-body);
+  text-align: left;
+  cursor: pointer;
+}
+.lists-rail-item:hover {
+  background: var(--bg-2);
+}
+.lists-rail-item.active {
+  background: var(--bg-2);
+  color: var(--text-0);
+}
+.lists-rail-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lists-rail-count {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.lists-rail-item.active .lists-rail-count {
+  color: var(--accent);
+}
+.lists-empty-rail {
+  padding: 8px 18px;
+  font-size: var(--t-small);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+/* ---- Right pane: items in the selected list ---- */
+.lists-pane {
+  flex: 1;
+  padding: var(--pad-view);
+  overflow-y: auto;
+  min-width: 0;
+}
+.lists-blank,
+.lists-empty {
+  color: var(--text-2);
+  font-size: var(--t-body);
+}
+.lists-empty {
+  padding: 18px 2px;
+}
+
+.lists-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 0.5px solid var(--line);
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+.lists-name {
+  font-size: var(--t-display);
+  font-weight: 500;
+  color: var(--text-0);
+  cursor: text;
+  letter-spacing: -0.01em;
+}
+.lists-name:hover {
+  color: var(--accent);
+}
+.lists-name-input {
+  font-size: var(--t-display);
+  font-weight: 500;
+  font-family: var(--font-ui);
+  color: var(--text-0);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  outline: none;
+  padding: 0 0 2px;
+}
+.lists-del-list {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 4px;
+}
+.lists-del-list:hover {
+  color: var(--down);
+}
+.lists-del-list i {
+  font-size: 17px;
+}
+
+/* ---- Add row ---- */
+.lists-add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.lists-text-input {
+  flex: 1;
+  background: var(--bg-0);
+  border: 0.5px solid var(--line);
+  border-radius: 7px;
+  padding: 9px 12px;
+  color: var(--text-0);
+  font-family: var(--font-ui);
+  font-size: var(--t-body);
+  outline: none;
+}
+.lists-text-input:focus {
+  border-color: var(--accent-dim);
+}
+.lists-text-input::placeholder {
+  color: var(--text-2);
+}
+.lists-note-toggle {
+  background: var(--bg-0);
+  border: 0.5px solid var(--line);
+  border-radius: 7px;
+  color: var(--text-2);
+  width: 38px;
+  cursor: pointer;
+}
+.lists-note-toggle.on {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+.lists-note-toggle i {
+  font-size: 16px;
+}
+.lists-add-item {
+  background: var(--bg-2);
+  border: 0.5px solid var(--line);
+  border-radius: 7px;
+  color: var(--text-0);
+  padding: 0 16px;
+  font-family: var(--font-ui);
+  font-size: var(--t-body);
+  cursor: pointer;
+}
+.lists-add-item:hover {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+.lists-note-input {
+  width: 100%;
+  margin: 8px 0 4px;
+  background: var(--bg-0);
+  border: 0.5px solid var(--line);
+  border-radius: 7px;
+  padding: 9px 12px;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--t-small);
+  outline: none;
+  resize: vertical;
+}
+.lists-note-input:focus {
+  border-color: var(--accent-dim);
+}
+
+/* ---- Items ---- */
+.lists-items {
+  margin-top: 14px;
+}
+.lists-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 11px 4px;
+  border-top: 0.5px solid var(--line-faint);
+}
+.lists-item:hover .lists-item-del {
+  opacity: 1;
+}
+.lists-check {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  margin-top: 1px;
+}
+.lists-check i {
+  font-size: 19px;
+}
+.lists-item.done .lists-check {
+  color: var(--accent);
+}
+
+.lists-item-body {
+  flex: 1;
+  min-width: 0;
+  cursor: text;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lists-item-text {
+  font-size: var(--t-body);
+  color: var(--text-0);
+}
+.lists-item.done .lists-item-text {
+  color: var(--text-2);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-2);
+}
+.lists-item-note {
+  font-size: var(--t-small);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.lists-item-edit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lists-item-del {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+  margin-top: 1px;
+}
+.lists-item-del:hover {
+  color: var(--down);
+}
+.lists-item-del i {
+  font-size: 15px;
+}
+
+.lists-done-divider {
+  margin: 18px 0 6px;
+  font-size: var(--t-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+@media (max-width: 720px) {
+  .lists-rail {
+    width: 150px;
+  }
+}

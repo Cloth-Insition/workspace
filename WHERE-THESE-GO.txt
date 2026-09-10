@@ -1,0 +1,22 @@
+Calendar feature — file placement
+==================================
+
+Copy these into your project, overwriting where noted. Paths are relative to
+the workspace folder (the one with package.json).
+
+NEW FILES:
+  src/tools/Calendar.tsx        -> src/tools/Calendar.tsx   (new)
+  src/styles/calendar.css       -> src/styles/calendar.css  (new)
+
+OVERWRITE (replace your existing ones):
+  src/tools/RotationView.tsx    -> src/tools/RotationView.tsx
+  src/styles/rotation.css       -> src/styles/rotation.css
+
+That's it. No backend changes, no new dependencies. After copying:
+
+  npm run tauri dev
+
+The fetch runs as before; once the table shows, a calendar sits to its right.
+Click a start date, then an end date — returns and breadth recompute for that
+span. Weekends/holidays are greyed and inert. Defaults to ~5 sessions back,
+same as the original script.

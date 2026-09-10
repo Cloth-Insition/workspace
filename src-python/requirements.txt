@@ -4,3 +4,4 @@ pydantic>=2.6
 numpy>=1.26
 pandas>=2.2
 yfinance>=0.2.40
+libsql>=0.1.11

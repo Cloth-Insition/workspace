@@ -20,8 +20,17 @@ fn main() {
             // Launch the FastAPI sidecar. In dev we run the interpreter against
             // the source tree; the working directory is the project root.
             let shell = app.shell();
+            // Prefer the project venv (has libsql for synced mode); fall back
+            // to whatever python3 is on PATH, matching the old behaviour.
+            let src_python = std::env::current_dir().unwrap().join("../src-python");
+            let venv_python = src_python.join(".venv/Scripts/python.exe");
+            let python_cmd = if venv_python.exists() {
+                venv_python.to_string_lossy().into_owned()
+            } else {
+                "python3".to_string()
+            };
             let (mut rx, _child) = shell
-                .command("python3")
+                .command(python_cmd)
                 .args([
                     "-m",
                     "uvicorn",
@@ -31,11 +40,7 @@ fn main() {
                     "--port",
                     "8765",
                 ])
-                .current_dir(
-                    std::env::current_dir()
-                        .unwrap()
-                        .join("../src-python"),
-                )
+                .current_dir(src_python)
                 .spawn()
                 .expect("failed to spawn python sidecar");
 

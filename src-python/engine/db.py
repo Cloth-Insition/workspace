@@ -1,0 +1,329 @@
+"""
+Connection layer — the only module that knows which driver the app runs on.
+
+Two modes, decided once at startup from environment / .env:
+
+  * synced  — TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are present. State
+    lives in a libSQL "synced database" file (offline=True): reads and
+    writes are local, and sync() pushes/pulls against Turso when the
+    network allows. Sync failures are catchable and non-fatal.
+  * local   — no credentials. State lives in the original plain SQLite
+    file via stdlib sqlite3, exactly as before the migration. No network
+    is ever touched.
+
+In both modes, machine-local caches (rotation scan, levels scan, SPY price
+cache) live in a separate plain-SQLite file that never syncs — they are
+big, disposable, per-machine blobs. The split is by kv key prefix, listed
+in LOCAL_ONLY_KEY_PREFIXES; ledger_db routes on it.
+
+Environment (set in the shell or src-python/.env — .env is gitignored):
+
+  TURSO_DATABASE_URL        libsql://... (enables synced mode)
+  TURSO_AUTH_TOKEN          token for the database
+  WORKSPACE_DB_PATH         local-mode state file   (default engine/workspace.db)
+  WORKSPACE_SYNCED_DB_PATH  synced-mode state file  (default engine/workspace-synced.db)
+  WORKSPACE_CACHE_DB_PATH   cache file              (default engine/local_cache.db)
+
+The synced file is deliberately distinct from workspace.db: libSQL manages
+its own sync metadata, and pointing it at the original file risks the
+known adopt-existing-database corruption issues. workspace.db stays behind
+as the untouched fallback/rollback copy; scripts/seed_synced_db.py copies
+its state across once.
+
+libSQL API compatibility note (flagged, not silently absorbed): libsql
+connections do not support row_factory / sqlite3.Row. Query code in
+ledger_db/lists_db relies on row["column"] access, so synced-mode
+connections are wrapped in a thin cursor shim that adds named access via
+cursor.description. Local mode keeps genuine sqlite3.Row. Query code is
+untouched either way.
+"""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+ENGINE_DIR = Path(__file__).resolve().parent
+ENV_FILE = ENGINE_DIR.parent / ".env"
+
+LOCAL_ONLY_KEY_PREFIXES = ("rotation:", "levels:", "ledger:spy_cache")
+
+# ---------------------------------------------------------------- env
+
+_env_loaded = False
+
+
+def _load_env() -> None:
+    """Fold src-python/.env into os.environ (existing env vars win)."""
+    global _env_loaded
+    if _env_loaded:
+        return
+    _env_loaded = True
+    if not ENV_FILE.exists():
+        return
+    for line in ENV_FILE.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+def _cfg(name: str, default: str) -> str:
+    _load_env()
+    return os.environ.get(name, default)
+
+
+def mode() -> str:
+    """'synced' when Turso credentials are configured, else 'local'."""
+    _load_env()
+    if os.environ.get("TURSO_DATABASE_URL") and os.environ.get("TURSO_AUTH_TOKEN"):
+        return "synced"
+    return "local"
+
+
+def state_db_path() -> Path:
+    if mode() == "synced":
+        return Path(_cfg("WORKSPACE_SYNCED_DB_PATH", str(ENGINE_DIR / "workspace-synced.db")))
+    return Path(_cfg("WORKSPACE_DB_PATH", str(ENGINE_DIR / "workspace.db")))
+
+
+def cache_db_path() -> Path:
+    return Path(_cfg("WORKSPACE_CACHE_DB_PATH", str(ENGINE_DIR / "local_cache.db")))
+
+
+# ------------------------------------------- libsql named-row shim
+
+class _Row:
+    """Minimal sqlite3.Row stand-in: index and name access over a tuple."""
+
+    __slots__ = ("_vals", "_idx")
+
+    def __init__(self, vals: tuple, idx: dict[str, int]):
+        self._vals = vals
+        self._idx = idx
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return self._vals[self._idx[key]]
+        return self._vals[key]
+
+    def keys(self):
+        return list(self._idx)
+
+    def __iter__(self):
+        return iter(self._vals)
+
+    def __len__(self):
+        return len(self._vals)
+
+    def __repr__(self):
+        return f"_Row({dict(zip(self._idx, self._vals))})"
+
+
+class _CursorShim:
+    """Wraps a libsql cursor so fetched rows support row['name']."""
+
+    __slots__ = ("_cur", "_idx")
+
+    def __init__(self, cur):
+        self._cur = cur
+        self._idx = None
+
+    def _index(self) -> dict[str, int]:
+        if self._idx is None:
+            desc = self._cur.description or []
+            self._idx = {col[0]: i for i, col in enumerate(desc)}
+        return self._idx
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        return None if row is None else _Row(tuple(row), self._index())
+
+    def fetchall(self):
+        idx = None
+        out = []
+        for row in self._cur.fetchall():
+            if idx is None:
+                idx = self._index()
+            out.append(_Row(tuple(row), idx))
+        return out
+
+    def fetchmany(self, size=None):
+        rows = self._cur.fetchmany(size) if size is not None else self._cur.fetchmany()
+        idx = self._index()
+        return [_Row(tuple(r), idx) for r in rows]
+
+    def __iter__(self):
+        idx = self._index()
+        for row in self._cur:
+            yield _Row(tuple(row), idx)
+
+    def __getattr__(self, name):  # description, lastrowid, rowcount, close...
+        return getattr(self._cur, name)
+
+
+class SyncedConnection:
+    """Wraps a libsql connection: named-row cursors + guarded sync()."""
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def execute(self, sql, params=()):
+        return _CursorShim(self._raw.execute(sql, params))
+
+    def executemany(self, sql, seq):
+        return _CursorShim(self._raw.executemany(sql, seq))
+
+    def executescript(self, script):
+        return self._raw.executescript(script)
+
+    def commit(self):
+        self._raw.commit()
+
+    def rollback(self):
+        self._raw.rollback()
+
+    def close(self):
+        self._raw.close()
+
+    def sync(self):
+        """Push/pull against Turso. Raises on failure — callers use
+        try_sync() unless they specifically want the error."""
+        self._raw.sync()
+
+
+# ---------------------------------------------------------------- connect
+
+def connect_state():
+    """Open the state database for the active mode.
+
+    local  -> sqlite3 connection, row_factory=sqlite3.Row, WAL. Identical
+              to pre-migration behaviour.
+    synced -> libsql offline-writes connection (wrapped). On a fresh file
+              this performs one blocking sync so the schema and data arrive
+              before the first query — the only moment synced mode needs
+              the network. An already-populated file opens fine offline.
+    """
+    if mode() == "local":
+        conn = sqlite3.connect(state_db_path(), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
+
+    import libsql  # only imported in synced mode
+
+    path = state_db_path()
+    fresh = not path.exists()
+    raw = libsql.connect(
+        str(path),
+        sync_url=os.environ["TURSO_DATABASE_URL"],
+        auth_token=os.environ["TURSO_AUTH_TOKEN"],
+        offline=True,
+    )
+    conn = SyncedConnection(raw)
+    try:
+        conn.sync()
+        _record_sync_attempt(success=True)
+    except Exception as exc:
+        if fresh:
+            conn.close()
+            raise RuntimeError(
+                "First-time sync failed and no local replica exists yet. "
+                "Synced mode needs the network once to pull initial state: "
+                f"{exc}"
+            ) from exc
+        print(f"[db] startup sync failed (continuing on local replica): {exc}",
+              file=sys.stderr, flush=True)
+        _record_sync_attempt(success=False, error=str(exc))
+    return conn
+
+
+def try_sync(conn) -> tuple[bool, str | None]:
+    """Sync if the connection supports it. Never raises.
+
+    Returns (ok, error). In local mode: (True, None) — nothing to sync is
+    not a failure. Records the outcome in the cache DB for the UI.
+    """
+    if not isinstance(conn, SyncedConnection):
+        return True, None
+    try:
+        conn.sync()
+    except Exception as exc:
+        _record_sync_attempt(success=False, error=str(exc))
+        return False, str(exc)
+    _record_sync_attempt(success=True)
+    return True, None
+
+
+def _record_sync_attempt(success: bool, error: str | None = None) -> None:
+    """Persist sync outcome to the cache DB (machine-local, for the UI)."""
+    try:
+        conn = connect_cache()
+        now = str(int(time.time()))
+        with conn:
+            conn.execute(
+                "INSERT INTO kv (key, value) VALUES ('sync:last_attempt_at', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (now,))
+            if success:
+                conn.execute(
+                    "INSERT INTO kv (key, value) VALUES ('sync:last_ok_at', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (now,))
+                conn.execute("DELETE FROM kv WHERE key = 'sync:last_error'")
+            elif error is not None:
+                conn.execute(
+                    "INSERT INTO kv (key, value) VALUES ('sync:last_error', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (error,))
+        conn.close()
+    except Exception:
+        pass  # status bookkeeping must never take the app down
+
+
+# ---------------------------------------------------------------- cache DB
+
+_cache_init_done = False
+
+
+def connect_cache() -> sqlite3.Connection:
+    """Plain-SQLite, never-synced, per-machine cache store."""
+    global _cache_init_done
+    conn = sqlite3.connect(cache_db_path(), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    if not _cache_init_done:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)")
+        conn.commit()
+        _cache_init_done = True
+    return conn
+
+
+def is_local_only_key(key: str) -> bool:
+    return key.startswith(LOCAL_ONLY_KEY_PREFIXES)
+
+
+def migrate_cache_keys(state_conn, lock) -> None:
+    """One-time, idempotent: move cache-prefixed kv rows out of the state DB
+    into the local cache DB, so they stop syncing. Runs at startup."""
+    try:
+        with lock:
+            rows = state_conn.execute("SELECT key, value FROM kv").fetchall()
+        movers = [(r["key"], r["value"]) for r in rows if is_local_only_key(r["key"])]
+        if not movers:
+            return
+        cache = connect_cache()
+        with cache:
+            cache.executemany(
+                "INSERT INTO kv (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value", movers)
+        cache.close()
+        with lock:
+            for key, _ in movers:
+                state_conn.execute("DELETE FROM kv WHERE key = ?", (key,))
+            state_conn.commit()
+        print(f"[db] moved {len(movers)} cache key(s) to local cache store",
+              file=sys.stderr, flush=True)
+    except Exception as exc:
+        print(f"[db] cache-key migration skipped: {exc}", file=sys.stderr, flush=True)

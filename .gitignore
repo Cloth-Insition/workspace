@@ -25,3 +25,4 @@ src-tauri/target/
 # Editor noise
 .DS_Store
 Thumbs.db
+*.db-info

@@ -1,5 +1,5 @@
 """
-Ledger persistence — SQLite.
+Ledger persistence.
 
 Replaces the browser's window.storage. The original Ledger stored four things
 under string keys: the trades array, an account-snapshots array, the SPY price
@@ -11,36 +11,45 @@ Trades are stored as proper rows (not a JSON blob) so that later the workspace
 can query them — but the API hands the frontend back the same array shape it
 already expects, so nothing in the component's logic has to change.
 
-The DB file lives next to the sidecar as workspace.db. Single-user, local,
-no migrations framework needed yet — the schema is created on first run.
+Storage backend: engine.db picks it (see that module's docstring). With Turso
+credentials configured, state lives in a libSQL synced database that
+replicates across machines; without them, the original plain-SQLite
+workspace.db, exactly as before. Machine-local caches (kv keys matching
+db.LOCAL_ONLY_KEY_PREFIXES — rotation/levels scan caches, the SPY price
+cache) are routed to a separate never-synced cache file in both modes.
+
+Schema note: migration 001 added updated_at columns + auto-stamp triggers
+and the tombstones table. The DDL here still creates the pre-migration
+shape on a brand-new empty database — run scripts/migrate_001_sync_prep.py
+after first creation on a fresh machine (the seeded/synced path already
+carries the migrated schema).
 """
 
 from __future__ import annotations
 
 import json
-import sqlite3
 import threading
-from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent / "workspace.db"
+from . import db
 
 # One connection, guarded by a lock. SQLite handles concurrent reads fine but
 # the sidecar is single-process and this keeps writes clean.
 _lock = threading.Lock()
-_conn: sqlite3.Connection | None = None
+_conn = None
 
 
-def _connect() -> sqlite3.Connection:
+def _connect():
     global _conn
     if _conn is None:
-        _conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        _conn.row_factory = sqlite3.Row
-        _conn.execute("PRAGMA journal_mode=WAL")
-        _init(_conn)
+        conn = db.connect_state()
+        _init(conn)
+        _conn = conn
+        # One-time move of cache-prefixed kv rows into the local cache store.
+        db.migrate_cache_keys(_conn, _lock)
     return _conn
 
 
-def _init(conn: sqlite3.Connection) -> None:
+def _init(conn) -> None:
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS trades (
@@ -80,7 +89,7 @@ _TRADE_COLS = [
 _BOOL_COLS = {"scaledInOut", "followedRules"}
 
 
-def _row_to_trade(row: sqlite3.Row) -> dict:
+def _row_to_trade(row) -> dict:
     t: dict = {}
     for col in _TRADE_COLS:
         v = row[col]
@@ -142,8 +151,17 @@ def save_trades(trades: list[dict]) -> bool:
 
 
 # ---- Generic key/value, for snapshots, SPY cache, seeded flag ----
+# Cache-prefixed keys go to the never-synced local cache DB; real state
+# stays in the (possibly synced) state DB.
 
 def get_kv(key: str) -> str | None:
+    if db.is_local_only_key(key):
+        cache = db.connect_cache()
+        try:
+            row = cache.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+        finally:
+            cache.close()
+        return row["value"] if row else None
     conn = _connect()
     with _lock:
         cur = conn.execute("SELECT value FROM kv WHERE key = ?", (key,))
@@ -152,6 +170,18 @@ def get_kv(key: str) -> str | None:
 
 
 def set_kv(key: str, value: str) -> None:
+    if db.is_local_only_key(key):
+        cache = db.connect_cache()
+        try:
+            with cache:
+                cache.execute(
+                    "INSERT INTO kv (key, value) VALUES (?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (key, value),
+                )
+        finally:
+            cache.close()
+        return
     conn = _connect()
     with _lock:
         conn.execute(

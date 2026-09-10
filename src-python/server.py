@@ -6,17 +6,24 @@ everything Python: running the rotation fetch, the S/R level detection, and
 (later) Ledger persistence. The frontend never runs Python directly — it
 calls these endpoints.
 
-Run standalone for development:
-    uvicorn server:app --port 8765 --reload
+Run standalone for development (use the venv — it has libsql):
+    .venv/Scripts/python -m uvicorn server:app --port 8765 --reload
 
 In the packaged app, Tauri starts it via the sidecar mechanism (see
 src-tauri/src/main.rs).
+
+Sync: with Turso credentials configured (src-python/.env), state replicates
+across machines. engine.db owns the how; this file owns the when — sync on
+startup (in the connection warm-up), debounced after every state write
+(db.request_sync() in the mutating endpoints), and on a background interval
+(SyncManager started in the lifespan). /sync/status feeds the UI indicator.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+import threading
 import time
 from contextlib import asynccontextmanager
 
@@ -25,16 +32,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # Local modules — the script logic lifted out of the standalone files.
-from engine import rotation, levels, ledger_db, spy, lists_db, luck, fx, alpha
+from engine import rotation, levels, ledger_db, spy, lists_db, luck, fx, alpha, db
 
 PORT = 8765
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Place for warm-up work later (e.g. opening the SQLite connection).
+    # Warm the state connection off the event loop: in synced mode the first
+    # connect performs the startup pull, which needs the network and must not
+    # block /health while it runs.
+    def warm():
+        try:
+            ledger_db._connect()
+        except Exception as exc:
+            print(f"[sidecar] state connection warm-up failed: {exc}",
+                  file=sys.stderr, flush=True)
+        db.start_sync_manager(ledger_db._connect, ledger_db._lock)
+        print(f"[sidecar] db mode: {db.mode()}", file=sys.stderr, flush=True)
+    threading.Thread(target=warm, name="db-warmup", daemon=True).start()
     print(f"[sidecar] up on :{PORT}", file=sys.stderr, flush=True)
     yield
+    db.stop_sync_manager()
     print("[sidecar] shutting down", file=sys.stderr, flush=True)
 
 
@@ -54,6 +73,30 @@ app.add_middleware(
 def health():
     """Liveness probe the frontend hits on startup to confirm the sidecar is up."""
     return {"ok": True, "service": "workspace-sidecar"}
+
+
+# ───────────────────────── Sync ─────────────────────────
+# State lives on a libSQL synced database when Turso credentials are set
+# (see engine/db.py). The UI polls /sync/status; failures are non-fatal and
+# the answer must always come back, so this endpoint never raises.
+
+@app.get("/sync/status")
+def sync_status():
+    """Sync mode and outcome of the last attempts, for the sidebar indicator.
+
+    mode 'local' means no credentials — deliberately not syncing. In mode
+    'synced': last_ok_at/last_attempt_at are unix seconds, last_error is the
+    message from the most recent failed attempt (cleared on success), and
+    pending_changes counts writes since the last successful sync.
+    """
+    return db.sync_status()
+
+
+@app.post("/sync/now")
+def sync_now():
+    """Manual sync trigger (the indicator doubles as a button)."""
+    ok, err = db.sync_now()
+    return {"ok": ok, "error": err, "status": db.sync_status()}
 
 
 class RotationRequest(BaseModel):
@@ -213,6 +256,7 @@ class TradesPayload(BaseModel):
 @app.post("/ledger/trades")
 def ledger_save_trades(payload: TradesPayload):
     ledger_db.save_trades(payload.trades)
+    db.request_sync()
     return {"ok": True}
 
 
@@ -234,6 +278,9 @@ def ledger_kv_get(req: KVGet):
 @app.post("/ledger/kv/set")
 def ledger_kv_set(req: KVSet):
     ledger_db.set_kv(req.key, req.value)
+    # Cache-prefixed keys live in the local cache DB — nothing to sync.
+    if not db.is_local_only_key(req.key):
+        db.request_sync()
     return {"ok": True}
 
 
@@ -291,7 +338,9 @@ class ListName(BaseModel):
 
 @app.post("/lists/add")
 def lists_add(req: ListName):
-    return lists_db.add_list(req.name)
+    result = lists_db.add_list(req.name)
+    db.request_sync()
+    return result
 
 
 class ListRename(BaseModel):
@@ -301,7 +350,9 @@ class ListRename(BaseModel):
 
 @app.post("/lists/rename")
 def lists_rename(req: ListRename):
-    return lists_db.rename_list(req.id, req.name)
+    result = lists_db.rename_list(req.id, req.name)
+    db.request_sync()
+    return result
 
 
 class ListId(BaseModel):
@@ -310,7 +361,9 @@ class ListId(BaseModel):
 
 @app.post("/lists/delete")
 def lists_delete(req: ListId):
-    return lists_db.delete_list(req.id)
+    result = lists_db.delete_list(req.id)
+    db.request_sync()
+    return result
 
 
 class ItemAdd(BaseModel):
@@ -321,7 +374,9 @@ class ItemAdd(BaseModel):
 
 @app.post("/lists/item/add")
 def lists_item_add(req: ItemAdd):
-    return lists_db.add_item(req.list_id, req.text, req.note)
+    result = lists_db.add_item(req.list_id, req.text, req.note)
+    db.request_sync()
+    return result
 
 
 class ItemUpdate(BaseModel):
@@ -333,12 +388,16 @@ class ItemUpdate(BaseModel):
 
 @app.post("/lists/item/update")
 def lists_item_update(req: ItemUpdate):
-    return lists_db.update_item(req.id, text=req.text, note=req.note, done=req.done)
+    result = lists_db.update_item(req.id, text=req.text, note=req.note, done=req.done)
+    db.request_sync()
+    return result
 
 
 @app.post("/lists/item/delete")
 def lists_item_delete(req: ListId):
-    return lists_db.delete_item(req.id)
+    result = lists_db.delete_item(req.id)
+    db.request_sync()
+    return result
 
 
 # ───────────────────────── Luck Check ─────────────────────────

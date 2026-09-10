@@ -61,15 +61,16 @@ def _load_env() -> None:
     global _env_loaded
     if _env_loaded:
         return
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    # Flag set only after parsing: a concurrent caller re-parses harmlessly
+    # (setdefault) instead of returning early against a half-loaded env.
     _env_loaded = True
-    if not ENV_FILE.exists():
-        return
-    for line in ENV_FILE.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, _, v = line.partition("=")
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
 def _cfg(name: str, default: str) -> str:
@@ -302,6 +303,149 @@ def connect_cache() -> sqlite3.Connection:
 
 def is_local_only_key(key: str) -> bool:
     return key.startswith(LOCAL_ONLY_KEY_PREFIXES)
+
+
+# ---------------------------------------------------------------- sync manager
+
+class SyncManager:
+    """Owns when sync happens: on demand (debounced after writes) and on a
+    background interval. All sync calls hold the app's connection lock so a
+    push/pull never interleaves with a write on the shared connection.
+
+    Failures never raise out of here — try_sync records them and the UI
+    surfaces them via /sync/status.
+    """
+
+    def __init__(self, get_conn, lock, interval: float, debounce: float = 3.0):
+        import threading
+        self._get_conn = get_conn
+        self._lock = lock
+        self._interval = interval
+        self._debounce = debounce
+        self._timer: "threading.Timer | None" = None
+        self._timer_guard = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: "threading.Thread | None" = None
+        self._pending = 0          # writes since last successful sync
+        self._threading = threading
+
+    # -- lifecycle
+
+    def start(self) -> None:
+        self._thread = self._threading.Thread(
+            target=self._loop, name="sync-interval", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        with self._timer_guard:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+        self.sync_now()  # best-effort final push so a clean quit leaves nothing behind
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self._interval):
+            self.sync_now()
+
+    # -- triggers
+
+    def request_sync(self) -> None:
+        """Called after a state write: coalesce bursts, sync soon after."""
+        with self._timer_guard:
+            self._pending += 1
+            if self._timer is not None:
+                self._timer.cancel()
+            self._timer = self._threading.Timer(self._debounce, self.sync_now)
+            self._timer.daemon = True
+            self._timer.start()
+
+    def sync_now(self) -> tuple[bool, str | None]:
+        try:
+            conn = self._get_conn()
+        except Exception as exc:
+            return False, str(exc)
+        with self._lock:
+            ok, err = try_sync(conn)
+        if ok:
+            with self._timer_guard:
+                self._pending = 0
+        return ok, err
+
+    # -- reporting
+
+    def status(self) -> dict:
+        st = sync_status_base()
+        with self._timer_guard:
+            st["pending_changes"] = self._pending
+        st["interval_seconds"] = self._interval
+        return st
+
+
+_manager: SyncManager | None = None
+
+
+def start_sync_manager(get_conn, lock) -> None:
+    """Called once from the server lifespan. No-op in local mode."""
+    global _manager
+    if mode() != "synced" or _manager is not None:
+        return
+    interval = float(_cfg("TURSO_SYNC_INTERVAL", "300"))
+    _manager = SyncManager(get_conn, lock, interval)
+    _manager.start()
+
+
+def stop_sync_manager() -> None:
+    global _manager
+    if _manager is not None:
+        _manager.stop()
+        _manager = None
+
+
+def request_sync() -> None:
+    """Fire-and-forget: call after any state write. Cheap no-op in local mode."""
+    if _manager is not None:
+        _manager.request_sync()
+
+
+def sync_now() -> tuple[bool, str | None]:
+    if _manager is None:
+        return True, None
+    return _manager.sync_now()
+
+
+def sync_status_base() -> dict:
+    """Sync state as stored in the machine-local cache DB."""
+    st = {
+        "mode": mode(),
+        "last_ok_at": None,
+        "last_attempt_at": None,
+        "last_error": None,
+    }
+    try:
+        conn = connect_cache()
+        try:
+            for key, field in (("sync:last_ok_at", "last_ok_at"),
+                               ("sync:last_attempt_at", "last_attempt_at"),
+                               ("sync:last_error", "last_error")):
+                row = conn.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+                if row:
+                    v = row["value"]
+                    st[field] = int(v) if field.endswith("_at") else v
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return st
+
+
+def sync_status() -> dict:
+    if _manager is not None:
+        return _manager.status()
+    st = sync_status_base()
+    st["pending_changes"] = 0
+    st["interval_seconds"] = None
+    return st
 
 
 def migrate_cache_keys(state_conn, lock) -> None:

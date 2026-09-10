@@ -79,6 +79,41 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+// ---- Sync: multi-machine state replication (Turso) ----
+//
+// mode "local" means no credentials configured — deliberately not syncing.
+// In mode "synced", last_ok_at/last_attempt_at are unix seconds and
+// last_error carries the most recent failure (cleared on success). The
+// sidebar indicator derives staleness from these; a fetch failure returns
+// null so a dead sidecar reads as "unknown", not as "synced".
+
+export interface SyncStatus {
+  mode: "synced" | "local";
+  last_ok_at: number | null;
+  last_attempt_at: number | null;
+  last_error: string | null;
+  pending_changes: number;
+  interval_seconds: number | null;
+}
+
+export async function fetchSyncStatus(): Promise<SyncStatus | null> {
+  try {
+    const res = await fetch(`${BASE}/sync/status`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export function triggerSyncNow(): Promise<{
+  ok: boolean;
+  error: string | null;
+  status: SyncStatus;
+}> {
+  return post("/sync/now", {});
+}
+
 export function fetchRotation(period?: string) {
   return post<RotationPayload>("/rotation/scan", { period: period ?? null });
 }

@@ -51,6 +51,15 @@ ENV_FILE = ENGINE_DIR.parent / ".env"
 
 LOCAL_ONLY_KEY_PREFIXES = ("rotation:", "levels:", "ledger:spy_cache")
 
+
+def row_content_hash(d: dict) -> str:
+    """Canonical hash of a row's content, for tombstone resurrection checks."""
+    import hashlib
+    import json
+    return hashlib.sha256(
+        json.dumps(d, sort_keys=True, default=str).encode()
+    ).hexdigest()
+
 # ---------------------------------------------------------------- env
 
 _env_loaded = False
@@ -316,10 +325,12 @@ class SyncManager:
     surfaces them via /sync/status.
     """
 
-    def __init__(self, get_conn, lock, interval: float, debounce: float = 3.0):
+    def __init__(self, get_conn, lock, interval: float, debounce: float = 3.0,
+                 swap_conn=None):
         import threading
         self._get_conn = get_conn
         self._lock = lock
+        self._swap_conn = swap_conn
         self._interval = interval
         self._debounce = debounce
         self._timer: "threading.Timer | None" = None
@@ -367,6 +378,12 @@ class SyncManager:
             return False, str(exc)
         with self._lock:
             ok, err = try_sync(conn)
+        if not ok and self._swap_conn is not None:
+            from . import reconcile
+            if reconcile.is_conflict_error(err):
+                # Divergence: libSQL refuses to merge, so we do — the
+                # documented per-row last-write-wins policy lives there.
+                ok, err = reconcile.run(conn, self._lock, self._swap_conn)
         if ok:
             with self._timer_guard:
                 self._pending = 0
@@ -385,13 +402,13 @@ class SyncManager:
 _manager: SyncManager | None = None
 
 
-def start_sync_manager(get_conn, lock) -> None:
+def start_sync_manager(get_conn, lock, swap_conn=None) -> None:
     """Called once from the server lifespan. No-op in local mode."""
     global _manager
     if mode() != "synced" or _manager is not None:
         return
     interval = float(_cfg("TURSO_SYNC_INTERVAL", "300"))
-    _manager = SyncManager(get_conn, lock, interval)
+    _manager = SyncManager(get_conn, lock, interval, swap_conn=swap_conn)
     _manager.start()
 
 
@@ -421,12 +438,14 @@ def sync_status_base() -> dict:
         "last_ok_at": None,
         "last_attempt_at": None,
         "last_error": None,
+        "last_reconcile_at": None,
     }
     try:
         conn = connect_cache()
         try:
             for key, field in (("sync:last_ok_at", "last_ok_at"),
                                ("sync:last_attempt_at", "last_attempt_at"),
+                               ("sync:last_reconcile_at", "last_reconcile_at"),
                                ("sync:last_error", "last_error")):
                 row = conn.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
                 if row:

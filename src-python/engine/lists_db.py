@@ -8,6 +8,12 @@ to trades or any other tool — its own little world, exactly as speced.
 Shares the same database file as Ledger but in its own tables, so the two
 never touch. Reuses Ledger's connection helper to avoid a second connection
 to the same file.
+
+Sync note: deletions insert a tombstone (see engine/reconcile.py) so a list
+or item deleted on one machine stays deleted after a conflict merge instead
+of resurrecting from the other machine's copy. Lists have no bulk-save path
+(every mutation is per-row), so no content-hash resurrection guard is
+needed here — tombstones carry NULL hashes.
 """
 
 from __future__ import annotations
@@ -53,8 +59,23 @@ def _now() -> int:
     return int(time.time())
 
 
+def _now_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()) \
+        + f".{int(time.time()*1000) % 1000:03d}Z"
+
+
 def _new_id() -> str:
     return uuid.uuid4().hex[:12]
+
+
+def _tombstone(conn, table: str, row_id: str) -> None:
+    conn.execute(
+        "INSERT INTO tombstones (table_name, row_id, deleted_at, content_hash) "
+        "VALUES (?, ?, ?, NULL) "
+        "ON CONFLICT(table_name, row_id) DO UPDATE SET "
+        "deleted_at = excluded.deleted_at, content_hash = NULL",
+        (table, row_id, _now_iso()),
+    )
 
 
 def get_all() -> dict:
@@ -114,7 +135,12 @@ def rename_list(list_id: str, name: str) -> dict:
 def delete_list(list_id: str) -> dict:
     conn = _conn()
     with ledger_db._lock:
+        item_rows = conn.execute(
+            "SELECT id FROM list_items WHERE list_id = ?", (list_id,)).fetchall()
+        for r in item_rows:
+            _tombstone(conn, "list_items", r["id"])
         conn.execute("DELETE FROM list_items WHERE list_id = ?", (list_id,))
+        _tombstone(conn, "lists", list_id)
         conn.execute("DELETE FROM lists WHERE id = ?", (list_id,))
         conn.commit()
     return {"ok": True}
@@ -159,6 +185,7 @@ def update_item(item_id: str, text: str | None = None,
 def delete_item(item_id: str) -> dict:
     conn = _conn()
     with ledger_db._lock:
+        _tombstone(conn, "list_items", item_id)
         conn.execute("DELETE FROM list_items WHERE id = ?", (item_id,))
         conn.commit()
     return {"ok": True}

@@ -48,7 +48,8 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             print(f"[sidecar] state connection warm-up failed: {exc}",
                   file=sys.stderr, flush=True)
-        db.start_sync_manager(ledger_db._connect, ledger_db._lock)
+        db.start_sync_manager(ledger_db._connect, ledger_db._lock,
+                              swap_conn=ledger_db.swap_connection)
         print(f"[sidecar] db mode: {db.mode()}", file=sys.stderr, flush=True)
     threading.Thread(target=warm, name="db-warmup", daemon=True).start()
     print(f"[sidecar] up on :{PORT}", file=sys.stderr, flush=True)

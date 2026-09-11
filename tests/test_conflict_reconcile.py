@@ -137,6 +137,62 @@ def step_a_verify():
     print("a-verify: A sees the merged state")
 
 
+def step_same_b_diverge():
+    # Same-row scenario, phase 1: B edits test-p5-b OFFLINE, first in time.
+    db, ledger_db = _edit("test-p5-b", "B-old-loser")
+    ok, _ = db.try_sync(ledger_db._connect())
+    assert not ok
+    print("same-row: B's earlier offline edit stored locally")
+
+
+def step_same_a_edit():
+    # Phase 2: A edits the SAME row later in time and pushes. Per the
+    # policy the newer write must win everywhere — including over B's
+    # stranded local edit, even though B reconciles (pushes) last.
+    import time as _time
+    _time.sleep(1.5)  # strictly later updated_at than B's edit
+    db, ledger_db = _edit("test-p5-b", "A-new-winner")
+    ok, err = db.try_sync(ledger_db._connect())
+    assert ok, err
+    print("same-row: A's later edit pushed")
+
+
+def step_same_b_reconcile():
+    import time as _time
+    db, ledger_db, reconcile = engine()
+    conn = ledger_db._connect()
+    err = None
+    for attempt in range(8):
+        ok, err = db.try_sync(conn)
+        assert not ok, "diverged replica must conflict"
+        if reconcile.is_conflict_error(err):
+            break
+        _time.sleep(2)
+    assert reconcile.is_conflict_error(err), f"never saw conflict: {err}"
+    ok, err = reconcile.run(conn, ledger_db._lock, ledger_db.swap_connection)
+    if not ok:
+        for attempt in range(8):
+            _time.sleep(3)
+            ok, err = db.try_sync(ledger_db._connect())
+            if ok:
+                break
+    assert ok, f"reconcile push never succeeded: {err}"
+    trades = {t["id"]: t for t in ledger_db.load_trades()}
+    assert trades["test-p5-b"]["notes"] == "A-new-winner", (
+        f"older local edit survived over newer cloud edit: "
+        f"{trades['test-p5-b']['notes']}")
+    assert trades["test-p5-a"]["notes"] == "A-edit"
+    print("same-row: reconciled — the NEWER write won, B's older edit "
+          "correctly discarded (timestamps decide, not push order)")
+
+
+def step_same_a_verify():
+    _, ledger_db, _ = engine()
+    trades = {t["id"]: t for t in ledger_db.load_trades()}
+    assert trades["test-p5-b"]["notes"] == "A-new-winner"
+    print("same-row: A confirms the converged state")
+
+
 def step_a_cleanup():
     db, ledger_db, _ = engine()
     trades = [t for t in ledger_db.load_trades()
@@ -165,6 +221,9 @@ STEPS = {
     "a-setup": step_a_setup, "b-pull": step_b_pull, "a-edit": step_a_edit,
     "b-diverge": step_b_diverge, "b-reconcile": step_b_reconcile,
     "a-verify": step_a_verify, "a-cleanup": step_a_cleanup,
+    "same-b-diverge": step_same_b_diverge, "same-a-edit": step_same_a_edit,
+    "same-b-reconcile": step_same_b_reconcile,
+    "same-a-verify": step_same_a_verify,
     "verify-clean": step_verify_clean,
 }
 
@@ -192,12 +251,19 @@ def main() -> int:
     for m in ("A", "B", "C"):
         (WORKDIR / m).mkdir(parents=True)
 
+    # Scenario 1: different rows edited on each machine — both edits survive.
     run_step("a-setup", "A")
     run_step("b-pull", "B")
     run_step("a-edit", "A")
     run_step("b-diverge", "B", offline=True)
     run_step("b-reconcile", "B")
     run_step("a-verify", "A")
+    # Scenario 2: the SAME row edited on both — the newer timestamp wins,
+    # even though the machine holding the older edit pushes last.
+    run_step("same-b-diverge", "B", offline=True)
+    run_step("same-a-edit", "A")
+    run_step("same-b-reconcile", "B")
+    run_step("same-a-verify", "A")
     run_step("a-cleanup", "A")
     run_step("verify-clean", "C")
     print("\nCONFLICT/RECONCILE TEST: ALL STEPS PASSED")

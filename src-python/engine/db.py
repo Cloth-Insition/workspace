@@ -47,7 +47,24 @@ import time
 from pathlib import Path
 
 ENGINE_DIR = Path(__file__).resolve().parent
-ENV_FILE = ENGINE_DIR.parent / ".env"
+
+
+def _frozen() -> bool:
+    """True inside a PyInstaller-built sidecar."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def app_data_dir() -> Path:
+    base = os.environ.get("APPDATA") or str(Path.home())
+    return Path(base) / "com.michael.workspace"
+
+
+# Where state lives by default. In dev, next to the engine source exactly as
+# always. Frozen, the source tree is a temporary PyInstaller extraction that
+# vanishes on exit — databases and .env live in the per-user app-data dir
+# instead. Env vars override either way.
+DATA_DIR = app_data_dir() if _frozen() else ENGINE_DIR
+ENV_FILE = (app_data_dir() / ".env") if _frozen() else ENGINE_DIR.parent / ".env"
 
 LOCAL_ONLY_KEY_PREFIXES = ("rotation:", "levels:", "ledger:spy_cache")
 
@@ -97,12 +114,12 @@ def mode() -> str:
 
 def state_db_path() -> Path:
     if mode() == "synced":
-        return Path(_cfg("WORKSPACE_SYNCED_DB_PATH", str(ENGINE_DIR / "workspace-synced.db")))
-    return Path(_cfg("WORKSPACE_DB_PATH", str(ENGINE_DIR / "workspace.db")))
+        return Path(_cfg("WORKSPACE_SYNCED_DB_PATH", str(DATA_DIR / "workspace-synced.db")))
+    return Path(_cfg("WORKSPACE_DB_PATH", str(DATA_DIR / "workspace.db")))
 
 
 def cache_db_path() -> Path:
-    return Path(_cfg("WORKSPACE_CACHE_DB_PATH", str(ENGINE_DIR / "local_cache.db")))
+    return Path(_cfg("WORKSPACE_CACHE_DB_PATH", str(DATA_DIR / "local_cache.db")))
 
 
 # ------------------------------------------- libsql named-row shim
@@ -219,7 +236,9 @@ def connect_state():
               the network. An already-populated file opens fine offline.
     """
     if mode() == "local":
-        conn = sqlite3.connect(state_db_path(), check_same_thread=False)
+        path = state_db_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
@@ -227,6 +246,7 @@ def connect_state():
     import libsql  # only imported in synced mode
 
     path = state_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
     fresh = not path.exists()
     raw = libsql.connect(
         str(path),
@@ -300,7 +320,9 @@ _cache_init_done = False
 def connect_cache() -> sqlite3.Connection:
     """Plain-SQLite, never-synced, per-machine cache store."""
     global _cache_init_done
-    conn = sqlite3.connect(cache_db_path(), check_same_thread=False)
+    path = cache_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     if not _cache_init_done:
         conn.execute("PRAGMA journal_mode=WAL")

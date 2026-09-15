@@ -149,6 +149,17 @@ def sidecar_checks(work: Path) -> None:
 
         st = http("/sync/status")
         assert st["mode"] == "local", st
+
+        # The installed Windows app's webview has origin http://tauri.localhost.
+        # Without this header its health check gets a 200 it cannot read, and
+        # the app sits on "Starting engine..." forever.
+        for origin in ("http://tauri.localhost", "tauri://localhost",
+                       "http://localhost:1420"):
+            req = urllib.request.Request(f"http://127.0.0.1:{PORT}/health",
+                                         headers={"Origin": origin})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                acao = r.headers.get("access-control-allow-origin")
+            assert acao == origin, f"CORS does not allow {origin} (got {acao!r})"
         trades = http("/ledger/trades")["trades"]
         assert trades and len(trades) > 0
         lists_resp = http("/lists")
@@ -158,7 +169,8 @@ def sidecar_checks(work: Path) -> None:
         sync = http("/sync/now", {})
         assert sync["ok"] is True  # local mode: nothing to sync is not a failure
         print(f"sidecar (no credentials): health, {len(trades)} trades over HTTP, "
-              "lists, kv round trip, /sync reports local mode")
+              "lists, kv round trip, /sync reports local mode, CORS allows "
+              "the Windows app origin")
     finally:
         proc.terminate()
         try:

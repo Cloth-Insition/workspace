@@ -68,11 +68,13 @@ def wait_port_free(timeout: int = 40) -> None:
     raise SystemExit(f"port {PORT} never freed — stale sidecar still running")
 
 
-def start(offline: bool):
+def start(offline: bool, app_pid: int | None = None):
     wait_port_free()
     env = dict(os.environ)
     env["APPDATA"] = str(SCRATCH)          # the whole point: a fresh machine
     env["TURSO_SYNC_INTERVAL"] = "20"
+    if app_pid is not None:
+        env["WORKSPACE_APP_PID"] = str(app_pid)
     if offline:
         env["TURSO_DATABASE_URL"] = BAD_URL
         env["TURSO_AUTH_TOKEN"] = "dummy"
@@ -115,6 +117,37 @@ def main() -> int:
     d.mkdir(parents=True)
     shutil.copy(ENV_SRC, d / ".env")
     print(f"fresh 'laptop' app-data: {d}\n")
+
+    # 0. The sidecar must exit on its own when the app does. Tauri never
+    # stops it, so a stand-in "app" process is started, its PID handed over
+    # exactly as main.rs does, and then killed — without touching the
+    # sidecar. If the port is not released, the next real launch would fail.
+    stand_in = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+    p = start(offline=False, app_pid=stand_in.pid)
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{PORT}/health",
+                                     headers={"Origin": "http://tauri.localhost"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            acao = r.headers.get("access-control-allow-origin")
+        assert acao == "http://tauri.localhost", (
+            f"packaged sidecar blocks the Windows app origin (got {acao!r}) — "
+            "the installed app would sit on 'Starting engine...'")
+        print("0a. packaged sidecar allows the Windows webview origin (CORS)")
+
+        stand_in.kill()
+        stand_in.wait(timeout=10)
+        for waited in range(20):
+            if not port_busy():
+                break
+            time.sleep(1)
+        else:
+            raise SystemExit("sidecar outlived the app — port 8765 still held")
+        print(f"0b. killed the stand-in app; sidecar exited by itself within {waited + 1}s")
+    finally:
+        if stand_in.poll() is None:
+            stand_in.kill()
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+        wait_port_free()
 
     # 1. First launch: pull existing history.
     p = start(offline=False)

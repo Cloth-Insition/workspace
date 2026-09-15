@@ -79,12 +79,12 @@ contain anything added since.
    just the old storage):
 
    ```bash
-   git switch main
+   git switch --detach pre-sync-migration
    ```
 
-   `main` holds the pre-migration baseline (`c67d74f` initial commit).
-   Once the migration branch is merged, roll back by checking out the tag
-   or commit before the merge instead.
+   That tag marks the pre-migration baseline (`c67d74f`) and stays valid
+   however the branches move afterwards. To get back to current work:
+   `git switch sync-migration`.
 
    Worth knowing: you usually don't need this. With credentials removed
    (step 5) the current code already behaves exactly like the old code —

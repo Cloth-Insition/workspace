@@ -86,6 +86,18 @@ Get-Process python | Stop-Process -Force
 
 Then relaunch.
 
+For the installed app the equivalent is a leftover `workspace-sidecar`
+process. The packaged sidecar exits automatically when the app closes, so
+this should not happen — but if the app ever starts and never leaves
+"Starting engine…", clear it and relaunch:
+
+```powershell
+taskkill /F /T /IM workspace-sidecar-x86_64-pc-windows-msvc.exe
+```
+
+(Note the `/T`: the frozen sidecar is a bootloader plus the child that
+actually serves, and killing only the bootloader leaves the port held.)
+
 ## Recovering data from a `.conflict-*` backup
 
 When the app rebuilds a diverged replica it first sets the old one aside as

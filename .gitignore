@@ -21,7 +21,12 @@ dist/
 
 # Tauri / Rust
 src-tauri/target/
+src-tauri/binaries/
+
+# PyInstaller
+build/
 
 # Editor noise
 .DS_Store
 Thumbs.db
+*.db-info

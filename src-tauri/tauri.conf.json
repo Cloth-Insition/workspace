@@ -31,7 +31,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://github.com/mikeykreuz/workspace/releases/latest/download/latest.json"
+        "https://github.com/Cloth-Insition/workspace/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMzNjgwRTA2OTUyNzhBOEEKUldTS2lpZVZCZzVvdzhPY2ZZL0RDYUoyZ0E4bHcydWxualRpREhVcTI2ME1HakVYQ1YzemY0ZWIK",
       "windows": {

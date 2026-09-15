@@ -32,7 +32,7 @@ npm run tauri signer generate -- -w "$env:USERPROFILE\.tauri\workspace-updater.k
 
 The updater endpoint in `tauri.conf.json` points at:
 
-    https://github.com/mikeykreuz/workspace/releases/latest/download/latest.json
+    https://github.com/Cloth-Insition/workspace/releases/latest/download/latest.json
 
 **The repository must be public** for this to work without embedding a
 GitHub token in the app. If you'd rather keep it private, that's fine — but

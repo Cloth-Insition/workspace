@@ -22,7 +22,8 @@ SRC_PYTHON = HERE.parent / "src-python"
 
 OFFLINE_TESTS = ["test_migrations.py", "test_fallback.py"]
 NETWORK_TESTS = ["test_round_trip.py", "test_offline.py",
-                 "test_conflict_reconcile.py", "test_stats_regression.py"]
+                 "test_conflict_reconcile.py", "test_replica_repair.py",
+                 "test_stats_regression.py"]
 
 
 def main() -> int:

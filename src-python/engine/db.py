@@ -40,6 +40,7 @@ untouched either way.
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import sys
@@ -338,6 +339,45 @@ def is_local_only_key(key: str) -> bool:
 
 # ---------------------------------------------------------------- sync manager
 
+def replica_log_intact(path: Path | None = None) -> bool | None:
+    """Can this synced replica still actually sync?
+
+    A libSQL offline replica keeps every frame the server has confirmed in
+    its WAL, and syncs by frame position. If any plain SQLite connection
+    opens and closes the file — a backup script, a DB browser — SQLite
+    checkpoints and deletes that WAL on close. From then on every sync()
+    silently does nothing in either direction while reporting success:
+    local edits never leave the machine and remote ones never arrive.
+
+    Detectable because the log becomes shorter than the confirmed position
+    recorded in the -info file. Returns None when there is nothing to judge
+    (no replica yet, never synced).
+    """
+    path = path or state_db_path()
+    info = Path(str(path) + "-info")
+    if not info.exists():
+        return None
+    try:
+        durable = int(json.loads(info.read_text())["durable_frame_num"])
+    except Exception:
+        return None
+    if durable <= 0:
+        return None
+    wal = Path(str(path) + "-wal")
+    try:
+        size = wal.stat().st_size
+        with open(wal, "rb") as f:
+            header = f.read(32)
+    except OSError:
+        return False
+    if size < 32 or len(header) < 32:
+        return False
+    page_size = int.from_bytes(header[8:12], "big")
+    if page_size <= 0:
+        return False
+    return (size - 32) // (page_size + 24) >= durable
+
+
 class SyncManager:
     """Owns when sync happens: on demand (debounced after writes) and on a
     background interval. All sync calls hold the app's connection lock so a
@@ -345,6 +385,12 @@ class SyncManager:
 
     Failures never raise out of here — try_sync records them and the UI
     surfaces them via /sync/status.
+
+    It also repairs the two states in which libSQL cannot sync by itself:
+    a server conflict after divergence (sync fails loudly), and a replica
+    whose log was destroyed by an outside SQLite connection (sync "succeeds"
+    while doing nothing — see replica_log_intact). Both go through the same
+    rebuild-and-merge in engine/reconcile.py, so local edits survive.
     """
 
     def __init__(self, get_conn, lock, interval: float, debounce: float = 3.0,
@@ -361,6 +407,10 @@ class SyncManager:
         self._thread: "threading.Thread | None" = None
         self._pending = 0          # writes since last successful sync
         self._threading = threading
+        self._repair_guard = threading.Lock()
+        # Set if a freshly rebuilt replica still fails the log check: the
+        # check itself is then wrong for this server, and must not loop.
+        self._log_check_disabled = False
 
     # -- lifecycle
 
@@ -378,6 +428,10 @@ class SyncManager:
         self.sync_now()  # best-effort final push so a clean quit leaves nothing behind
 
     def _loop(self) -> None:
+        # A replica broken while the app was closed would otherwise look
+        # healthy until the first interval tick — minutes of silent drift.
+        if replica_log_intact() is False:
+            self.sync_now()
         while not self._stop.wait(self._interval):
             self.sync_now()
 
@@ -398,6 +452,11 @@ class SyncManager:
             conn = self._get_conn()
         except Exception as exc:
             return False, str(exc)
+
+        if (self._swap_conn is not None and not self._log_check_disabled
+                and replica_log_intact() is False):
+            return self._repair_broken_log(conn)
+
         with self._lock:
             ok, err = try_sync(conn)
         if not ok and self._swap_conn is not None:
@@ -410,6 +469,30 @@ class SyncManager:
             with self._timer_guard:
                 self._pending = 0
         return ok, err
+
+    def _repair_broken_log(self, conn) -> tuple[bool, str | None]:
+        if not self._repair_guard.acquire(blocking=False):
+            return False, "replica repair already in progress"
+        try:
+            from . import reconcile
+            print("[db] replica log is shorter than its confirmed sync position: "
+                  "sync would silently do nothing. Rebuilding replica and merging "
+                  "local changes.", file=sys.stderr, flush=True)
+            ok, err = reconcile.run(conn, self._lock, self._swap_conn)
+            if replica_log_intact() is False:
+                self._log_check_disabled = True
+                print("[db] rebuilt replica still fails the log check — disabling "
+                      "the check for this session rather than looping",
+                      file=sys.stderr, flush=True)
+            if ok:
+                with self._timer_guard:
+                    self._pending = 0
+            else:
+                _record_sync_attempt(success=False,
+                                     error=f"replica repair failed: {err}")
+            return ok, err
+        finally:
+            self._repair_guard.release()
 
     # -- reporting
 

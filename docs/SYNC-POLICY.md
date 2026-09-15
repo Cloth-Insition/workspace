@@ -93,14 +93,38 @@ path (every mutation is per-row), so their tombstones carry no hash.
 
 ## Rules learned the hard way
 
-* **Never open the synced database file without its sync credentials.** A
-  plain local connection writes changes the replication layer does not
-  track: they exist locally, never reach the cloud, and sync happily
-  reports OK. (This bit us applying migration 002 — the replica had to be
-  rebuilt from the cloud and the migration re-applied through a synced
-  connection.) Migration scripts targeting the synced file must go through
-  a synced connection, as `scripts/migrate_002_tombstone_hash.py --libsql`
-  now does.
+* **Never open a synced replica (`workspace-synced.db`) with anything but
+  the app's own libSQL sync connection** — not a backup script, not a DB
+  browser, not even read-only. A libSQL offline replica keeps every frame
+  the server has confirmed in its write-ahead log and syncs by frame
+  position. When a plain SQLite connection to the file closes, SQLite
+  checkpoints and *deletes* that log. From then on every sync silently does
+  nothing in either direction while still reporting success: local edits
+  never leave the machine, remote edits never arrive, and the sidebar stays
+  green.
+
+  Found on 2026-09-15, after `scripts/backup_db.py` was pointed at the dev
+  replica (as `ROLLBACK.md` then recommended): list deletions made
+  afterwards kept coming back, because each "successful" sync pulled the
+  unchanged cloud copy over them. Confirmed with a controlled experiment —
+  two identical fresh replicas, one given a single plain-SQLite
+  open-and-close: its log went from 281 frames to 0, and its next write
+  returned "sync OK" and never reached Turso. libSQL's own connection is
+  not a risk: it runs with automatic checkpoints disabled and kept its log
+  through 1,500 commits.
+
+  Two defences now exist. `backup_db.py` refuses to open a replica, and
+  `--cloud` backs up a throwaway copy instead. And the app checks every
+  sync whether the log is shorter than the confirmed position (see
+  `db.replica_log_intact`); if it is, it rebuilds the replica and merges
+  local rows back in through the same path as a conflict, so edits made
+  while broken survive. `tests/test_replica_repair.py` breaks a replica on
+  purpose and proves both.
+
+  An earlier variant of the same trap: applying migration 002 through a
+  plain connection left the change local-only. Migration scripts targeting
+  the synced file must use a synced connection, as
+  `scripts/migrate_002_tombstone_hash.py --libsql` does.
 * The `.conflict-*` files next to the synced database are pre-reconcile
   backups of a diverged replica. They can be inspected with plain sqlite3
   (read-only!) if a merge ever needs auditing, and are pruned to the last

@@ -48,6 +48,26 @@ a few minutes, use the reset below.
 `npm run tauri dev`, and lines starting `[reconcile]` or `[db]` are the
 relevant ones.
 
+## "synced", but changes aren't reaching the other machine
+
+The one failure the indicator can't show directly. Almost always caused by
+something outside the app opening the synced replica file — a DB browser,
+a backup tool, a script. That silently destroys the replica's sync log, so
+syncs report success while doing nothing.
+
+The app now detects this within a sync cycle (on launch, after a change,
+or every five minutes) and repairs it automatically: it rebuilds the
+replica from Turso and merges this machine's edits back in. You'll see
+`[db] replica log is shorter than its confirmed sync position` in the log
+when it happens. If changes still don't appear, use the reset below.
+
+To avoid it: don't open `workspace-synced.db` in any SQLite tool. To look
+at your data, back up the cloud and open the backup instead:
+
+```powershell
+src-python\.venv\Scripts\python scripts\backup_db.py --cloud
+```
+
 ## The reset that almost always works
 
 Safe because it throws away only the local *replica*, never the source of
@@ -118,7 +138,7 @@ audited rather than trusted.
 If the cloud database itself gets into a state you don't trust, the desktop
 can rebuild it from scratch:
 
-1. Back up first: `python scripts\backup_db.py`
+1. Back up first: `src-python\.venv\Scripts\python scripts\backup_db.py --cloud`
 2. Delete the database in the Turso dashboard and create a new empty one.
 3. Put the new URL and token in `src-python\.env`.
 4. Delete the local synced replica (`src-python\engine\workspace-synced.db*`).

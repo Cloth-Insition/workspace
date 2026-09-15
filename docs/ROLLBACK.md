@@ -35,9 +35,17 @@ python scripts/backup_db.py --verify-only backups/workspace-<stamp>.db
 or cloud storage). A backup that lives only next to the thing it protects
 is half a backup.
 
-To back up what's currently in the *cloud* rather than a local file, point
-the script at a synced replica — e.g. the dev one at
-`src-python/engine/workspace-synced.db`, after the app has synced it.
+To back up what's currently in the *cloud* rather than a local file, use
+`--cloud` with the project venv:
+
+```powershell
+src-python\.venv\Scripts\python scripts\backup_db.py --cloud
+```
+
+It pulls a throwaway replica and backs that up. **Never point the script,
+or any SQLite tool, at a live `workspace-synced.db`** — see
+[SYNC-POLICY.md](SYNC-POLICY.md#rules-learned-the-hard-way). The script now
+refuses to.
 
 ## Which copy is the real one?
 
@@ -68,12 +76,12 @@ contain anything added since.
 
    ```powershell
    cd "C:\Users\mikey\Downloads\Trading Scripts\workspace"
-   python scripts\backup_db.py --db src-python\engine\workspace-synced.db
+   src-python\.venv\Scripts\python scripts\backup_db.py --cloud
    ```
 
-   That gives you a verified plain-SQLite file containing everything sync
-   knew about — use it as the restore source in step 4 if it's newer than
-   your last backup.
+   That gives you a verified plain-SQLite file, `backups\workspace-cloud-*.db`,
+   containing everything in Turso — use it as the restore source in step 4
+   if it's newer than your last backup.
 
 3. **Check out pre-migration code** (only if you want the old code, not
    just the old storage):

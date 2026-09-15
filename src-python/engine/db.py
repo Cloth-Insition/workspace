@@ -223,6 +223,16 @@ class SyncedConnection:
         try_sync() unless they specifically want the error."""
         self._raw.sync()
 
+    def adopt(self, other: "SyncedConnection") -> None:
+        """Take over another connection's libSQL handle in place.
+
+        Rebuilding a replica must not replace this object: request handlers
+        fetch the connection before waiting on the app lock, so one arriving
+        mid-rebuild already holds a reference, and would otherwise run its
+        query on the closed handle once the lock frees (an HTTP 500).
+        """
+        self._raw = other._raw
+
 
 # ---------------------------------------------------------------- connect
 
@@ -259,7 +269,8 @@ def connect_state():
     try:
         conn.sync()
         _record_sync_attempt(success=True)
-    except Exception as exc:
+    except BaseException as exc:
+        _reraise_if_interrupt(exc)
         if fresh:
             conn.close()
             raise RuntimeError(
@@ -273,6 +284,15 @@ def connect_state():
     return conn
 
 
+def _reraise_if_interrupt(exc: BaseException) -> None:
+    """Sync code catches BaseException because libSQL's Rust panics arrive
+    as pyo3's PanicException, which is not an Exception — caught narrowly,
+    one would silently kill the sync thread and syncing would stop for
+    good. Genuine interrupts must still propagate."""
+    if isinstance(exc, (KeyboardInterrupt, SystemExit, GeneratorExit)):
+        raise exc
+
+
 def try_sync(conn) -> tuple[bool, str | None]:
     """Sync if the connection supports it. Never raises.
 
@@ -283,7 +303,8 @@ def try_sync(conn) -> tuple[bool, str | None]:
         return True, None
     try:
         conn.sync()
-    except Exception as exc:
+    except BaseException as exc:
+        _reraise_if_interrupt(exc)
         _record_sync_attempt(success=False, error=str(exc))
         return False, str(exc)
     _record_sync_attempt(success=True)
@@ -448,6 +469,19 @@ class SyncManager:
             self._timer.start()
 
     def sync_now(self) -> tuple[bool, str | None]:
+        """Never raises: runs on the interval thread, debounce timers and
+        the /sync/now endpoint, and an escaping error would end background
+        syncing silently while the indicator kept its last good state."""
+        try:
+            return self._sync_now()
+        except BaseException as exc:
+            _reraise_if_interrupt(exc)
+            msg = f"sync crashed: {type(exc).__name__}: {exc}"
+            print(f"[db] {msg}", file=sys.stderr, flush=True)
+            _record_sync_attempt(success=False, error=msg)
+            return False, msg
+
+    def _sync_now(self) -> tuple[bool, str | None]:
         try:
             conn = self._get_conn()
         except Exception as exc:

@@ -184,6 +184,16 @@ def _merge(fresh, local: dict[str, list[dict]]) -> dict[str, int]:
     return stats
 
 
+def _install(conn, replacement, swap_conn) -> None:
+    """Point the app at the replacement replica without changing the
+    connection object it already holds (see SyncedConnection.adopt)."""
+    if hasattr(conn, "adopt"):
+        conn.adopt(replacement)
+        swap_conn(conn)
+    else:
+        swap_conn(replacement)
+
+
 def run(conn, lock, swap_conn) -> tuple[bool, str | None]:
     """Full reconciliation of a conflicted replica. Called by the sync
     manager when a sync attempt reports a server conflict.
@@ -212,7 +222,7 @@ def run(conn, lock, swap_conn) -> tuple[bool, str | None]:
         except Exception as exc:
             _undo_moves(moves)
             try:
-                swap_conn(db.connect_state())
+                _install(conn, db.connect_state(), swap_conn)
             except Exception as exc2:
                 return False, (f"reconcile pull failed AND replica reopen failed: "
                                f"{exc} / {exc2}")
@@ -231,12 +241,12 @@ def run(conn, lock, swap_conn) -> tuple[bool, str | None]:
                 Path(str(path) + suffix).unlink(missing_ok=True)
             _undo_moves(moves)
             try:
-                swap_conn(db.connect_state())
+                _install(conn, db.connect_state(), swap_conn)
             except Exception:
                 pass
             return False, f"reconcile merge failed (replica restored): {exc}"
 
-        swap_conn(fresh)
+        _install(conn, fresh, swap_conn)
 
     # Push the merged state. The server side of a just-conflicted session
     # can transiently answer 503 "database is locked" for a few seconds, so
@@ -246,7 +256,7 @@ def run(conn, lock, swap_conn) -> tuple[bool, str | None]:
     ok = False
     err: str | None = None
     for attempt in range(4):
-        ok, err = db.try_sync(fresh)
+        ok, err = db.try_sync(conn)
         if ok or is_conflict_error(err):
             break
         time.sleep(2 + attempt * 2)

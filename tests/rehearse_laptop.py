@@ -224,6 +224,34 @@ def main() -> int:
     assert LIST_NAME not in remaining, f"cleanup incomplete: {remaining}"
     print(f"6. cleaned up; lists now: {remaining}")
 
+    # 7. A replica whose log an outside SQLite connection destroyed must be
+    # repaired by the SHIPPED sidecar on launch — otherwise it would sync
+    # "successfully" while doing nothing, indefinitely.
+    import sqlite3
+    replica = SCRATCH / "com.michael.workspace" / "workspace-synced.db"
+    src = sqlite3.connect(replica)
+    dst = sqlite3.connect(SCRATCH / "throwaway-backup.db")
+    src.backup(dst); dst.close(); src.close()
+    assert db.replica_log_intact(replica) is False, "failed to break the replica for the test"
+    log_before = (SCRATCH / "sidecar.log").read_bytes()
+    p = start(offline=False)
+    try:
+        for _ in range(45):
+            if db.replica_log_intact(replica):
+                break
+            time.sleep(1)
+        else:
+            raise SystemExit("shipped sidecar did not repair a broken replica on launch")
+        st = http("/sync/status")
+        assert st["last_error"] is None, st
+        new_log = (SCRATCH / "sidecar.log").read_bytes()[len(log_before):]
+        assert b"replica log is shorter" in new_log, "repaired, but without the repair path logging"
+        assert http("/ledger/trades")["trades"], "no trades after repair"
+        print("7. broke the replica's sync log; the shipped sidecar detected and "
+              "repaired it on launch")
+    finally:
+        stop(p)
+
     shutil.rmtree(SCRATCH, ignore_errors=True)
     print("\nDEFINITION-OF-DONE REHEARSAL PASSED (through the packaged binary)")
     return 0

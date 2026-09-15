@@ -79,11 +79,44 @@ def a_break():
 
 
 def a_repair():
+    import threading
     db, ledger_db, _ = engine()
     _set_notes("edited on the broken replica")
     mgr = db.SyncManager(ledger_db._connect, ledger_db._lock, interval=3600,
                          swap_conn=ledger_db.swap_connection)
+
+    # Requests keep arriving while the replica is rebuilt — at app startup
+    # the UI loads trades at exactly the moment a repair runs. A handler
+    # holding the connection from before the rebuild must not end up
+    # querying the closed handle (which surfaced as HTTP 500s).
+    reader_errors: list[str] = []
+    reads = 0
+    stop = threading.Event()
+
+    def reader():
+        nonlocal reads
+        while not stop.is_set():
+            try:
+                ledger_db.load_trades()
+                reads += 1
+            # BaseException, not Exception: a query on a closed libSQL handle
+            # raises pyo3's PanicException, which is not an Exception. Catching
+            # only Exception let it kill this thread silently, and the test
+            # passed against the very bug it exists to catch.
+            except BaseException as exc:
+                reader_errors.append(f"{type(exc).__name__}: {exc}")
+
+    t = threading.Thread(target=reader, daemon=True)
+    t.start()
     ok, err = mgr.sync_now()
+    reader_alive = t.is_alive()
+    stop.set()
+    t.join(timeout=30)
+    assert reader_alive, "reader thread died during the repair"
+    assert not reader_errors, (
+        f"{len(reader_errors)} of {reads + len(reader_errors)} concurrent reads failed "
+        f"during repair, e.g. {reader_errors[0]}")
+    print(f"a-repair: {reads} concurrent reads during the rebuild, none failed")
     if not ok:
         import time
         for _ in range(6):

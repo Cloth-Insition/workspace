@@ -39,6 +39,9 @@ SCRATCH = Path(tempfile.gettempdir()) / "workspace-laptop-sim"
 BAD_URL = "libsql://offline-test-nonexistent-host.turso.io"
 LIST_NAME = "sync-rehearsal"
 PORT = 8765
+# The packaged sidecar writes its own log into the app-data dir (the release
+# app has no console), so that is where to look — not its stdout.
+SIDECAR_LOG = SCRATCH / "com.michael.workspace" / "sidecar.log"
 
 
 def http(path: str, body=None, timeout=20):
@@ -78,8 +81,8 @@ def start(offline: bool, app_pid: int | None = None):
     if offline:
         env["TURSO_DATABASE_URL"] = BAD_URL
         env["TURSO_AUTH_TOKEN"] = "dummy"
-    log = open(SCRATCH / "sidecar.log", "ab")
-    p = subprocess.Popen([str(EXE)], env=env, stdout=log, stderr=log)
+    p = subprocess.Popen([str(EXE)], env=env,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(60):
         try:
             http("/health", timeout=3)
@@ -87,7 +90,7 @@ def start(offline: bool, app_pid: int | None = None):
         except Exception:
             time.sleep(1)
     p.kill()
-    tail = (SCRATCH / "sidecar.log").read_text(errors="replace")[-800:]
+    tail = SIDECAR_LOG.read_text(errors="replace")[-800:] if SIDECAR_LOG.exists() else "(no log)"
     raise SystemExit("packaged sidecar never came up. log:\n" + tail)
 
 
@@ -233,7 +236,6 @@ def main() -> int:
     dst = sqlite3.connect(SCRATCH / "throwaway-backup.db")
     src.backup(dst); dst.close(); src.close()
     assert db.replica_log_intact(replica) is False, "failed to break the replica for the test"
-    log_before = (SCRATCH / "sidecar.log").read_bytes()
     p = start(offline=False)
     try:
         for _ in range(45):
@@ -244,8 +246,9 @@ def main() -> int:
             raise SystemExit("shipped sidecar did not repair a broken replica on launch")
         st = http("/sync/status")
         assert st["last_error"] is None, st
-        new_log = (SCRATCH / "sidecar.log").read_bytes()[len(log_before):]
-        assert b"replica log is shorter" in new_log, "repaired, but without the repair path logging"
+        # The sidecar starts a fresh log file on each launch.
+        assert b"replica log is shorter" in SIDECAR_LOG.read_bytes(), \
+            "repaired, but without the repair path logging"
         assert http("/ledger/trades")["trades"], "no trades after repair"
         print("7. broke the replica's sync log; the shipped sidecar detected and "
               "repaired it on launch")

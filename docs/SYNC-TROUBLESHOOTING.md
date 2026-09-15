@@ -44,9 +44,14 @@ the result (see [SYNC-POLICY.md](SYNC-POLICY.md)). You may briefly see
 "unsynced" while it happens. If it *stays* stuck on a conflict for more than
 a few minutes, use the reset below.
 
-**Anything else** — read the sidecar log. In dev it's the terminal running
-`npm run tauri dev`, and lines starting `[reconcile]` or `[db]` are the
-relevant ones.
+**Anything else** — read the sidecar log. For the installed app it's
+
+    %APPDATA%\com.michael.workspace\sidecar.log
+
+with the previous launch kept as `sidecar.previous.log`. In dev it's the
+terminal running `npm run tauri dev`. Lines starting `[reconcile]`, `[db]`
+or `[sidecar]` are the relevant ones; `[sidecar] orphan guard:` lines show
+the backend tracking the app window so it can exit with it.
 
 ## "synced", but changes aren't reaching the other machine
 

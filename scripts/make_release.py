@@ -125,7 +125,11 @@ def publish(version: str, notes: str, manifest: Path) -> None:
     slug = repo_slug()
     gh = "gh"
     fallback = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "GitHub CLI" / "gh.exe"
-    if subprocess.run([gh, "--version"], capture_output=True).returncode != 0:
+    try:
+        on_path = subprocess.run([gh, "--version"], capture_output=True).returncode == 0
+    except FileNotFoundError:
+        on_path = False  # a shell opened before gh was installed has no PATH entry
+    if not on_path:
         if not fallback.exists():
             raise SystemExit("gh CLI not found — install it or publish manually")
         gh = str(fallback)

@@ -132,15 +132,22 @@ the auto-updater works.
 
 ## Backups
 
-The database holds real trade history. Before anything risky:
+The database holds real trade history. Before anything risky, back up what
+Turso currently holds:
 
 ```powershell
-python scripts\backup_db.py
+src-python\.venv\Scripts\python scripts\backup_db.py --cloud
 ```
 
-It uses SQLite's online backup API (safe while the app is running), then
-verifies the copy against the original and refuses to keep an unverified
-one. Keep at least one copy somewhere other than this folder.
+It pulls a throwaway replica, copies it with SQLite's online backup API,
+then verifies the copy and refuses to keep an unverified one. Without
+`--cloud` it backs up the local pre-sync fallback file instead. Keep at
+least one copy somewhere other than this folder.
+
+**Never open `workspace-synced.db` in a SQLite tool** — doing so silently
+breaks that machine's sync (the app detects and repairs it, but don't rely
+on that). Open a backup instead. Details in
+[SYNC-POLICY.md](docs/SYNC-POLICY.md#rules-learned-the-hard-way).
 
 ## Notes
 

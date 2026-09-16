@@ -8,6 +8,11 @@
 *.db-wal
 *.db.bak
 backups/
+# Replicas set aside by sync repair/reconcile (workspace-synced.db.conflict-<stamp>
+# plus -wal/-shm/-info). Full copies of trade data; their names do not end in
+# .db, so the rules above miss them.
+*.conflict-*
+*.db.*
 
 # Python
 __pycache__/

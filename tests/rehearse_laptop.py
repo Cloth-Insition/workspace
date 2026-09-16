@@ -39,6 +39,9 @@ SCRATCH = Path(tempfile.gettempdir()) / "workspace-laptop-sim"
 BAD_URL = "libsql://offline-test-nonexistent-host.turso.io"
 LIST_NAME = "sync-rehearsal"
 PORT = 8765
+# The packaged sidecar writes its own log into the app-data dir (the release
+# app has no console), so that is where to look — not its stdout.
+SIDECAR_LOG = SCRATCH / "com.michael.workspace" / "sidecar.log"
 
 
 def http(path: str, body=None, timeout=20):
@@ -68,16 +71,18 @@ def wait_port_free(timeout: int = 40) -> None:
     raise SystemExit(f"port {PORT} never freed — stale sidecar still running")
 
 
-def start(offline: bool):
+def start(offline: bool, app_pid: int | None = None):
     wait_port_free()
     env = dict(os.environ)
     env["APPDATA"] = str(SCRATCH)          # the whole point: a fresh machine
     env["TURSO_SYNC_INTERVAL"] = "20"
+    if app_pid is not None:
+        env["WORKSPACE_APP_PID"] = str(app_pid)
     if offline:
         env["TURSO_DATABASE_URL"] = BAD_URL
         env["TURSO_AUTH_TOKEN"] = "dummy"
-    log = open(SCRATCH / "sidecar.log", "ab")
-    p = subprocess.Popen([str(EXE)], env=env, stdout=log, stderr=log)
+    p = subprocess.Popen([str(EXE)], env=env,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(60):
         try:
             http("/health", timeout=3)
@@ -85,7 +90,7 @@ def start(offline: bool):
         except Exception:
             time.sleep(1)
     p.kill()
-    tail = (SCRATCH / "sidecar.log").read_text(errors="replace")[-800:]
+    tail = SIDECAR_LOG.read_text(errors="replace")[-800:] if SIDECAR_LOG.exists() else "(no log)"
     raise SystemExit("packaged sidecar never came up. log:\n" + tail)
 
 
@@ -115,6 +120,37 @@ def main() -> int:
     d.mkdir(parents=True)
     shutil.copy(ENV_SRC, d / ".env")
     print(f"fresh 'laptop' app-data: {d}\n")
+
+    # 0. The sidecar must exit on its own when the app does. Tauri never
+    # stops it, so a stand-in "app" process is started, its PID handed over
+    # exactly as main.rs does, and then killed — without touching the
+    # sidecar. If the port is not released, the next real launch would fail.
+    stand_in = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+    p = start(offline=False, app_pid=stand_in.pid)
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{PORT}/health",
+                                     headers={"Origin": "http://tauri.localhost"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            acao = r.headers.get("access-control-allow-origin")
+        assert acao == "http://tauri.localhost", (
+            f"packaged sidecar blocks the Windows app origin (got {acao!r}) — "
+            "the installed app would sit on 'Starting engine...'")
+        print("0a. packaged sidecar allows the Windows webview origin (CORS)")
+
+        stand_in.kill()
+        stand_in.wait(timeout=10)
+        for waited in range(20):
+            if not port_busy():
+                break
+            time.sleep(1)
+        else:
+            raise SystemExit("sidecar outlived the app — port 8765 still held")
+        print(f"0b. killed the stand-in app; sidecar exited by itself within {waited + 1}s")
+    finally:
+        if stand_in.poll() is None:
+            stand_in.kill()
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+        wait_port_free()
 
     # 1. First launch: pull existing history.
     p = start(offline=False)
@@ -190,6 +226,34 @@ def main() -> int:
     remaining = [l["name"] for l in lists_db.get_all()["lists"]]
     assert LIST_NAME not in remaining, f"cleanup incomplete: {remaining}"
     print(f"6. cleaned up; lists now: {remaining}")
+
+    # 7. A replica whose log an outside SQLite connection destroyed must be
+    # repaired by the SHIPPED sidecar on launch — otherwise it would sync
+    # "successfully" while doing nothing, indefinitely.
+    import sqlite3
+    replica = SCRATCH / "com.michael.workspace" / "workspace-synced.db"
+    src = sqlite3.connect(replica)
+    dst = sqlite3.connect(SCRATCH / "throwaway-backup.db")
+    src.backup(dst); dst.close(); src.close()
+    assert db.replica_log_intact(replica) is False, "failed to break the replica for the test"
+    p = start(offline=False)
+    try:
+        for _ in range(45):
+            if db.replica_log_intact(replica):
+                break
+            time.sleep(1)
+        else:
+            raise SystemExit("shipped sidecar did not repair a broken replica on launch")
+        st = http("/sync/status")
+        assert st["last_error"] is None, st
+        # The sidecar starts a fresh log file on each launch.
+        assert b"replica log is shorter" in SIDECAR_LOG.read_bytes(), \
+            "repaired, but without the repair path logging"
+        assert http("/ledger/trades")["trades"], "no trades after repair"
+        print("7. broke the replica's sync log; the shipped sidecar detected and "
+              "repaired it on launch")
+    finally:
+        stop(p)
 
     shutil.rmtree(SCRATCH, ignore_errors=True)
     print("\nDEFINITION-OF-DONE REHEARSAL PASSED (through the packaged binary)")

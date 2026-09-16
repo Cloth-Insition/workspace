@@ -61,10 +61,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="workspace-sidecar", lifespan=lifespan)
 
 # In dev the Vite frontend runs on :1420 (Tauri's default). In the packaged
-# app the frontend is served from the Tauri webview origin. Allow both.
+# app the frontend is served from the Tauri webview origin, which differs by
+# platform: tauri://localhost on macOS/Linux, but http://tauri.localhost on
+# Windows (https:// if the app ever enables useHttpsScheme). Miss the Windows
+# one and the installed app's health check gets a 200 the webview refuses to
+# read, so it sits on "Starting engine..." forever with no error anywhere.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:1420", "tauri://localhost"],
+    allow_origins=[
+        "http://localhost:1420",
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )

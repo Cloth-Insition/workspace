@@ -55,9 +55,14 @@ fn main() {
             } else {
                 // Release: the bundled PyInstaller binary. It owns its own
                 // config/data paths (%APPDATA%/com.michael.workspace).
+                // Tauri does not stop spawned processes when the app exits,
+                // so the sidecar is told this app's PID and exits by itself
+                // once the app is gone — otherwise it keeps port 8765 and
+                // the next launch's sidecar cannot bind.
                 shell
                     .sidecar("workspace-sidecar")
                     .expect("sidecar binary not bundled")
+                    .env("WORKSPACE_APP_PID", std::process::id().to_string())
                     .spawn()
                     .expect("failed to spawn bundled sidecar")
             };

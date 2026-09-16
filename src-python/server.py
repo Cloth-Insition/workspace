@@ -193,6 +193,10 @@ def levels_universe():
 class ProximityRequest(BaseModel):
     sectors: list[str] | None = None  # None / empty = whole universe
     threshold: float = 2.0
+    # When set, "near" is measured in ATR instead of percent, so one setting
+    # means the same thing in a calm market and a fast one. Percent stays the
+    # default; this is opt-in.
+    threshold_atr: float | None = None
     min_touches: int = 2
     tolerance: float = 1.0
     span: int = 3
@@ -215,6 +219,7 @@ def levels_proximity(req: ProximityRequest):
     result = levels.proximity_scan(
         tickers,
         threshold_pct=req.threshold,
+        threshold_atr=req.threshold_atr,
         min_touches=req.min_touches,
         tolerance=req.tolerance,
         span=req.span,

@@ -68,3 +68,45 @@
 .rot-radar i {
   font-size: 15px;
 }
+
+
+/* ---- scan ranking additions ---- */
+
+.lev-sortbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+.lev-sortbar .label {
+  margin-right: 4px;
+}
+.lev-sort {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 0.5px solid transparent;
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.lev-sort:hover:not(.on) { color: var(--text-1); background: var(--bg-2); }
+.lev-sort.on {
+  color: var(--accent);
+  background: var(--bg-sel);
+  border-color: var(--accent-dim);
+}
+
+/* A level about to be tested, and one touched recently: the two facts that
+   decide whether a row is worth charting this morning. */
+.eta-soon { color: var(--text-0); }
+.fresh-hi { color: var(--text-1); }
+
+/* The blended rank stays quiet — it orders the list, it does not rule on it. */
+.lev-score {
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+.lev-score.hi { color: var(--text-0); }

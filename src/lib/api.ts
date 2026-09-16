@@ -47,7 +47,7 @@ export interface RotationPayload {
   error: string | null;
 }
 
-export interface Level {
+export interface Level extends LevelMetrics {
   lo: number;
   hi: number;
   center: number;
@@ -61,6 +61,8 @@ export interface Level {
 export interface LevelMap {
   ticker: string;
   price: number | null;
+  atr?: number | null;
+  atr_pct?: number | null;
   levels: Level[];
   error: string | null;
 }
@@ -156,7 +158,38 @@ export async function fetchCachedRotation(): Promise<CachedRotation> {
 
 // ---- Levels: proximity scan across the universe ----
 
-export interface ScanRow {
+/** Everything measured about one level. Detection is unchanged — these
+ *  describe levels the scanner already found, from OHLCV it already fetched.
+ *  Fields are optional so a scan cached by an older build still renders. */
+export interface LevelMetrics {
+  /** Distance to the level in ATR — the same setting means the same thing in
+   *  a calm market and a fast one, which percent does not. */
+  dist_atr?: number | null;
+  /** Sessions since the level was last / first touched. */
+  bars_since_last?: number;
+  bars_since_first?: number;
+  /** Volume on the touch bars vs this ticker's own median (1 = typical). */
+  touch_vol_rel?: number | null;
+  /** Times price has closed clean through the level's band since it formed. */
+  traversals?: number;
+  /** Is price heading toward this level (direction-aware, so a level price
+   *  just broke through counts as left behind, not approached). */
+  moving_toward?: boolean | null;
+  /** Sessions until price reaches it at the last fortnight's pace; null when
+   *  it is moving away. */
+  eta_bars?: number | null;
+  /** Clear air beyond the level, and the level behind it, in ATR.
+   *  room_atr null means nothing beyond it at all — the most room there is. */
+  room_atr?: number | null;
+  behind_atr?: number | null;
+  /** 0-100 blend of the above, with its components. Convenience for ordering,
+   *  not a verdict: the weights are unvalidated guesses. */
+  score?: number;
+  parts?: Record<string, number>;
+  atr_pct?: number | null;
+}
+
+export interface ScanRow extends LevelMetrics {
   ticker: string;
   price: number;
   level: number;
@@ -188,11 +221,17 @@ export async function fetchUniverse(): Promise<Record<string, UniverseSector>> {
 
 export function runProximityScan(opts: {
   sectors?: string[];
+  /** Percent distance — still accepted, but the UI now scans in ATR. */
   threshold?: number;
+  /** Distance in ATR. When set, the backend measures "near" in ATR instead. */
+  thresholdAtr?: number;
+  minTouches?: number;
 }): Promise<ScanResult> {
   return post<ScanResult>("/levels/proximity", {
     sectors: opts.sectors ?? null,
     threshold: opts.threshold ?? 2.0,
+    threshold_atr: opts.thresholdAtr ?? null,
+    min_touches: opts.minTouches ?? 2,
   });
 }
 
@@ -201,6 +240,8 @@ export interface CachedScan {
   cached_at: number | null;
   age_seconds: number | null;
   threshold: number | null;
+  threshold_atr?: number | null;
+  min_touches?: number | null;
 }
 export async function fetchCachedScan(): Promise<CachedScan> {
   try {

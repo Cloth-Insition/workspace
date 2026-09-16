@@ -230,6 +230,11 @@ def levels_proximity(req: ProximityRequest):
             ledger_db.set_kv("levels:cache", json.dumps(result))
             ledger_db.set_kv("levels:cache_at", str(int(time.time())))
             ledger_db.set_kv("levels:cache_threshold", str(req.threshold))
+            # Remember how the scan was framed, so reopening the tab restores
+            # the settings that produced the rows on screen.
+            ledger_db.set_kv("levels:cache_threshold_atr",
+                             "" if req.threshold_atr is None else str(req.threshold_atr))
+            ledger_db.set_kv("levels:cache_min_touches", str(req.min_touches))
         except Exception:
             pass
     return result
@@ -241,16 +246,22 @@ def levels_cached():
     raw = ledger_db.get_kv("levels:cache")
     at = ledger_db.get_kv("levels:cache_at")
     thr = ledger_db.get_kv("levels:cache_threshold")
+    thr_atr = ledger_db.get_kv("levels:cache_threshold_atr")
+    touches = ledger_db.get_kv("levels:cache_min_touches")
+    empty = {"result": None, "cached_at": None, "age_seconds": None,
+             "threshold": None, "threshold_atr": None, "min_touches": None}
     if not raw:
-        return {"result": None, "cached_at": None, "age_seconds": None, "threshold": None}
+        return empty
     try:
         result = json.loads(raw)
     except Exception:
-        return {"result": None, "cached_at": None, "age_seconds": None, "threshold": None}
+        return empty
     cached_at = int(at) if at else None
     age = (int(time.time()) - cached_at) if cached_at else None
     return {"result": result, "cached_at": cached_at, "age_seconds": age,
-            "threshold": float(thr) if thr else None}
+            "threshold": float(thr) if thr else None,
+            "threshold_atr": float(thr_atr) if thr_atr else None,
+            "min_touches": int(touches) if touches else None}
 
 
 # ───────────────────────── Ledger ─────────────────────────

@@ -42,11 +42,49 @@
 }
 
 /* Universe daily bar chart */
+/* ---- range buttons (same vocabulary as the FX tab) ---- */
+.vol-ranges {
+  display: flex;
+  gap: 2px;
+  margin: 10px 0 6px;
+}
+.vol-range {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 0.5px solid transparent;
+  border-radius: 5px;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.vol-range:hover:not(.active) {
+  color: var(--text-1);
+  background: var(--bg-2);
+}
+.vol-range.active {
+  color: var(--accent);
+  background: var(--bg-sel);
+  border-color: var(--accent-dim);
+}
+
 .vol-chart {
   display: flex;
   align-items: flex-end;
   gap: 2px;
   height: 80px;
+}
+/* A year is ~252 bars in the same width: drop the gaps and the rounding so
+   each session still gets its own sliver of colour. */
+.vol-chart.dense {
+  gap: 0;
+  /* A year of sessions needs more vertical room than a month, or the
+     day-to-day pattern collapses into a smear. */
+  height: 104px;
+}
+.vol-chart.dense .vol-bar {
+  border-radius: 0;
 }
 .vol-bar-wrap {
   flex: 1;
@@ -54,18 +92,40 @@
   display: flex;
   align-items: flex-end;
   cursor: default;
+  min-width: 0;
 }
 .vol-bar {
   width: 100%;
   background: var(--bg-2);
   border-radius: 2px 2px 0 0;
-  transition: background 0.12s;
+  transition: background 0.12s, filter 0.12s;
+}
+
+/* Colour carries the day's breadth: --i (0..1) is how lopsided it was, mixed
+   from the surface toward the muted up/down tokens. Never bright — the
+   palette rule holds here as everywhere. */
+.vol-bar.up {
+  background: var(--up);
+  background: color-mix(in srgb, var(--up) calc(var(--i, 1) * 100%), var(--bg-2));
+}
+.vol-bar.down {
+  background: var(--down);
+  background: color-mix(in srgb, var(--down) calc(var(--i, 1) * 100%), var(--bg-2));
 }
 .vol-bar-wrap:hover .vol-bar {
+  filter: brightness(1.35);
+}
+.vol-bar-wrap:hover .vol-bar:not(.up):not(.down) {
   background: var(--line);
 }
+
+/* Today keeps its own marker, but is coloured like every other session — the
+   accent stays reserved for the selected tool. */
 .vol-bar-wrap.today .vol-bar {
-  background: var(--accent);
+  /* On the bar, not its column: the column is full height, so outlining it
+     draws an empty box above a short bar. */
+  outline: 1px solid var(--text-1);
+  outline-offset: 1px;
 }
 
 .vol-axis {

@@ -59,8 +59,12 @@ HOLDINGS = {
              "EXC", "XEL", "ED", "WEC"],
 }
 
-HISTORY_PERIOD = "3mo"
+HISTORY_PERIOD = "1y"
 MONTH_BARS = 21
+# The volume panel reads a year; the per-ticker close series the table and
+# sector paths use stays at roughly a quarter, or the payload (and the cached
+# copy of it) grows several-fold for data nothing displays.
+SERIES_BARS = 70
 
 
 def _fetch_series(ticker: str, period: str):
@@ -93,12 +97,48 @@ def _fetch_series(ticker: str, period: str):
     return None
 
 
+def _daily_direction(series_full, sector_meta):
+    """Per-session market direction, from data the scan already fetched.
+
+    breadth = how many of the ~171 holdings closed up on the day, the same
+    "share of names up" the sector table's breadth column means, applied
+    daily across the whole universe instead of per sector over a span.
+    Each ticker is compared against its own previous bar, so a ticker with
+    a gap in its history does not skew the day.
+
+    Returns (up_per_date, counted_per_date, spy_pct_per_date).
+    """
+    holdings = {h for meta in sector_meta.values() for h in meta.get("holdings", [])}
+    up: dict[str, int] = {}
+    total: dict[str, int] = {}
+    for t in holdings:
+        prev = None
+        for date, close in series_full.get(t, {}).get("close", []):
+            if prev is not None:
+                total[date] = total.get(date, 0) + 1
+                if close > prev:
+                    up[date] = up.get(date, 0) + 1
+            prev = close
+
+    spy_pct: dict[str, float] = {}
+    prev = None
+    for date, close in series_full.get("SPY", {}).get("close", []):
+        if prev:
+            spy_pct[date] = round((close / prev - 1.0) * 100.0, 2)
+        prev = close
+    return up, total, spy_pct
+
+
 def _build_volume(series_full, sector_meta):
     """Aggregate dollar volume into chart-ready figures.
 
     Returns:
       {
-        "universe_daily": [[date, total_dollar_volume], ...],  # ~last 30 sessions
+        "daily": [                       # every session fetched, oldest first
+          {"d": date, "v": dollar_volume, "up": n_up, "n": n_counted,
+           "spy": pct_change_or_null},
+          ...
+        ],
         "sectors": [
           {"etf","name","today","avg20","rel"},  # today vs its own 20-day avg
           ...
@@ -114,8 +154,16 @@ def _build_volume(series_full, sector_meta):
             daily_totals[date] = daily_totals.get(date, 0.0) + dv
 
     dates_sorted = sorted(daily_totals.keys())
-    universe_daily = [[d, daily_totals[d]] for d in dates_sorted][-30:]
     today = dates_sorted[-1] if dates_sorted else None
+
+    up, counted, spy_pct = _daily_direction(series_full, sector_meta)
+    daily = [{
+        "d": d,
+        "v": daily_totals[d],
+        "up": up.get(d, 0) if counted.get(d) else None,
+        "n": counted.get(d) or None,
+        "spy": spy_pct.get(d),
+    } for d in dates_sorted]
 
     # Per-sector: today's dollar volume vs that sector's own 20-day average,
     # so a sector punching above its weight stands out even on a quiet day.
@@ -149,7 +197,7 @@ def _build_volume(series_full, sector_meta):
     sector_rows.sort(key=lambda r: -r["rel"])
 
     return {
-        "universe_daily": universe_daily,
+        "daily": daily,
         "sectors": sector_rows,
         "today": today,
         "today_is_latest": True,
@@ -182,7 +230,9 @@ def scan(period: str | None = None):
     for t in all_tickers:
         sd = _fetch_series(t, period)
         if sd:
-            series[t] = sd["close"]   # backward-compatible: same shape as before
+            # series_full keeps the whole year for the volume panel's daily
+            # breadth; series ships only the recent window the table draws.
+            series[t] = sd["close"][-SERIES_BARS:]
             series_full[t] = sd
             ok += 1
         time.sleep(0.3)

@@ -13,8 +13,24 @@ export interface VolumeSector {
   avg20: number;
   rel: number;
 }
+/** One session in the volume panel: dollar volume plus how the market moved
+ *  that day. `up`/`n` are the breadth count (names up out of names counted);
+ *  both are null on a session with nothing to compare against. `spy` is SPY's
+ *  own percentage change, shown in the tooltip. */
+export interface VolumeDay {
+  d: string;
+  v: number;
+  up: number | null;
+  n: number | null;
+  spy: number | null;
+}
+
 export interface VolumeBlock {
-  universe_daily: [string, number][];
+  /** Every session fetched — about a year, oldest first. */
+  daily?: VolumeDay[];
+  /** Older shape, kept only so a scan cached by a previous build still
+   *  renders (uncoloured, last 30 sessions) instead of blanking the panel. */
+  universe_daily?: [string, number][];
   sectors: VolumeSector[];
   today: string | null;
   today_is_latest: boolean;

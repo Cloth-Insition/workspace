@@ -618,6 +618,48 @@ function computeMonthlyBreakdown(trades) {
   return Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
 }
 
+// Monthly run rate: what an average COMPLETE month has actually produced, as a
+// share of the account and in dollars at today's account value.
+//
+// Built on computeMonthlyBreakdown, so it inherits accountImpactPct rather than
+// raw price return: a 5% move on a position worth a tenth of the account counts
+// as 0.5%, which is the same sizing-aware quantity the equity curve, Monte Carlo
+// and SQN already use. A dollar figure derived from raw trade returns would be
+// wrong by whatever the position sizing was.
+//
+// The current calendar month is excluded. A month three days old has not had a
+// chance to produce anything, and averaging it in drags the number down for a
+// reason that has nothing to do with the trading.
+//
+// Median is carried alongside the mean because at this sample size a single
+// outlier month moves the mean a long way, and the mean alone would read as
+// more of a forecast than it is.
+function computeMonthlyProjection(months, accountValue) {
+  if (!months || !months.length) return null;
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const complete = months.filter((m) => m.month !== thisMonth);
+  if (!complete.length) return null;
+
+  const pcts = complete.map((m) => m.impact).sort((a, b) => a - b);
+  const mean = pcts.reduce((a, b) => a + b, 0) / pcts.length;
+  const mid = Math.floor(pcts.length / 2);
+  const median = pcts.length % 2 ? pcts[mid] : (pcts[mid - 1] + pcts[mid]) / 2;
+
+  const toDollars = (pct) =>
+    accountValue === null || accountValue === undefined || isNaN(accountValue)
+      ? null
+      : accountValue * (pct / 100);
+
+  return {
+    months: complete.length,
+    partialExcluded: months.length !== complete.length,
+    meanPct: mean,
+    medianPct: median,
+    meanDollars: toDollars(mean),
+    medianDollars: toDollars(median),
+  };
+}
+
 // Rules-split expectancy: separate expectancy for rules-followed vs rules-broken trades
 function computeRulesSplitExpectancy(trades) {
   const followed = trades.filter((t) => t.followedRules);
@@ -826,6 +868,13 @@ const fmtNum = (n, decimals = 2) =>
 
 const fmtMoney = (n) =>
   n === null || n === undefined || isNaN(n) ? '—' : `$${n.toFixed(2)}`;
+
+// Whole dollars, thousands-separated, sign outside the symbol. Cents on a
+// projected figure imply a precision it does not have.
+const fmtMoneyWhole = (n) =>
+  n === null || n === undefined || isNaN(n)
+    ? '—'
+    : `${n < 0 ? '-' : ''}$${Math.abs(Math.round(n)).toLocaleString()}`;
 
 const colorForReturn = (r) => (r > 0 ? 'text-emerald' : r < 0 ? 'text-crimson' : 'text-stone');
 
@@ -1380,7 +1429,10 @@ function Dashboard({ trades, stats, curve, r2, mc, convictionBuckets, excessVsSp
 
       {dashTab === 'overview' && (
         <div className="space-y-8">
-          <HeadlineStats stats={stats} />
+          <HeadlineStats
+            stats={stats}
+            projection={computeMonthlyProjection(monthlyBreakdown, currentAccountValue)}
+          />
           <EquityCurve
             curve={curve}
             r2={r2}
@@ -1496,7 +1548,7 @@ function EmptyState() {
   );
 }
 
-function HeadlineStats({ stats }) {
+function HeadlineStats({ stats, projection }) {
   if (!stats) return null;
 
   const cards = [
@@ -1532,8 +1584,29 @@ function HeadlineStats({ stats }) {
     },
   ];
 
+  if (projection) {
+    const plural = projection.months === 1 ? '' : 's';
+    cards.push({
+      label: 'Monthly Run Rate',
+      value: fmtMoneyWhole(projection.meanDollars),
+      sub: `${fmtPct(projection.meanPct, 1)} avg · ${projection.months} mo`,
+      tone:
+        projection.meanPct > 0 ? 'emerald' : projection.meanPct < 0 ? 'crimson' : 'neutral',
+      icon: Calendar,
+      note:
+        `Mean of ${projection.months} complete month${plural}, at today's account value. ` +
+        `Median ${fmtPct(projection.medianPct, 1)} (${fmtMoneyWhole(projection.medianDollars)}). ` +
+        (projection.partialExcluded ? 'The current part-month is excluded. ' : '') +
+        `A run rate, not a forecast — ${projection.months} month${plural} is a very small sample.`,
+    });
+  }
+
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div
+      className={`grid grid-cols-2 ${
+        cards.length >= 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'
+      } gap-4`}
+    >
       {cards.map((c) => (
         <StatCard key={c.label} {...c} />
       ))}

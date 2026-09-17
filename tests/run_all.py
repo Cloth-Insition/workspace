@@ -20,7 +20,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SRC_PYTHON = HERE.parent / "src-python"
 
-OFFLINE_TESTS = ["test_migrations.py", "test_fallback.py"]
+OFFLINE_TESTS = ["test_migrations.py", "test_fallback.py",
+                 "test_levels_scoring.py"]
 NETWORK_TESTS = ["test_round_trip.py", "test_offline.py",
                  "test_conflict_reconcile.py", "test_replica_repair.py",
                  "test_stats_regression.py"]

@@ -18,22 +18,27 @@ const RANGES = [
 ] as const;
 type RangeKey = (typeof RANGES)[number]["key"];
 
-// Breadth drives both the direction and the depth of a bar's colour. 0.5 is
-// an even day; BREADTH_FULL either side of it is as deep as the colour gets.
-// Calibrated against a real year of this universe, where breadth runs
-// median 52%, 10th percentile 29%, 90th 71%: at 0.30 about a sixth of
-// sessions reach near-full colour and a seventh stay near-neutral, so the
-// scale is actually used without every other day shouting.
-const BREADTH_FULL = 0.30;
+// SPY's move drives both the direction and the depth of a bar's colour.
+// Breadth used to, and it disagreed with the tape too often to be useful: a
+// session where SPY closed +0.3% on 30-of-150 breadth came out fully red,
+// which is not what the day was. Breadth is still in the tooltip.
+//
+// Calibrated the same way the breadth scale was, against a real year of SPY:
+// median absolute move 0.48%, p80 1.00%, p90 1.40%. At 1.00% about a fifth of
+// sessions reach near-full colour, so the scale is actually used without every
+// other day shouting.
+const SPY_FULL_PCT = 1.0;
 const MIN_TINT = 0.22;   // a directional day is never so faint it reads as neutral
 
 function tint(day: VolumeDay): { dir: "up" | "down" | "flat"; strength: number } {
-  if (day.up === null || !day.n) return { dir: "flat", strength: 0 };
-  const share = day.up / day.n;
-  const off = share - 0.5;
-  if (Math.abs(off) < 1e-9) return { dir: "flat", strength: 0 };
-  const strength = Math.min(1, Math.abs(off) / BREADTH_FULL);
-  return { dir: off > 0 ? "up" : "down", strength: MIN_TINT + (1 - MIN_TINT) * strength };
+  // A scan cached by an older build may carry no SPY change at all.
+  if (day.spy === null || day.spy === undefined) return { dir: "flat", strength: 0 };
+  if (Math.abs(day.spy) < 1e-9) return { dir: "flat", strength: 0 };
+  const strength = Math.min(1, Math.abs(day.spy) / SPY_FULL_PCT);
+  return {
+    dir: day.spy > 0 ? "up" : "down",
+    strength: MIN_TINT + (1 - MIN_TINT) * strength,
+  };
 }
 
 function tooltip(day: VolumeDay, isToday: boolean): string {
@@ -54,7 +59,7 @@ function tooltip(day: VolumeDay, isToday: boolean): string {
  * day-vs-day comparison (a number like "$847B" is meaningless without the
  * neighbouring days); the per-sector bars show concentration.
  *
- * Bars are coloured by that session's breadth, so heavy days read as buying
+ * Bars are coloured by that session's SPY move, so heavy days read as buying
  * or selling at a glance rather than just "busy".
  */
 export function VolumePanel({ volume }: { volume: VolumeBlock }) {
@@ -138,7 +143,7 @@ export function VolumePanel({ volume }: { volume: VolumeBlock }) {
       <div className="vol-axis">
         <span>{daily[0].d.slice(5)}</span>
         <span className="vol-axis-note">
-          {daily.length} sessions · colour is that day’s breadth · today’s bar may be partial
+          {daily.length} sessions · colour is that day’s SPY move · today’s bar may be partial
         </span>
         <span>{daily[daily.length - 1].d.slice(5)}</span>
       </div>

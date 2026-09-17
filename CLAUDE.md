@@ -61,3 +61,47 @@ On Windows the command is `python`, not `python3`.
 yfinance fetches use polite inter-request spacing and retry-with-backoff. An
 all-NaN result means rate limiting, not missing data — fail loudly rather
 than caching NaNs, which has poisoned the history file before.
+
+## Sync layer
+
+Trades and lists live in a libSQL embedded replica that syncs through Turso,
+so desktop and laptop share one database. `src-python/engine/db.py` is the
+**only** module that knows the driver — everything else takes a connection.
+
+- Credentials are env-only, from `%APPDATA%\com.michael.workspace\.env`.
+  Never commit them, never print the token.
+- libSQL does **not** merge on divergence; the second pusher gets a
+  permanent server conflict. App-level per-row last-write-wins lives in
+  `engine/reconcile.py`.
+- **Never open the replica with plain `sqlite3`.** SQLite checkpoints and
+  deletes its WAL, after which every `sync()` silently does nothing in both
+  directions while reporting success. `replica_log_intact()` detects it and
+  the app rebuilds. This has bitten this repo once already, via the backup
+  script.
+- Rotation and Levels caches are deliberately machine-local
+  (`LOCAL_ONLY_KEY_PREFIXES`). Each machine runs its own scans.
+
+See `docs/SYNC-POLICY.md`, `docs/SYNC-TROUBLESHOOTING.md`,
+`docs/SETUP-SECOND-MACHINE.md`, `docs/ROLLBACK.md`.
+
+## Testing what actually ships
+
+Tests that exercise only source code have passed while the installed app was
+broken — three times: CORS, orphaned sidecars, and a crash during replica
+repair. All three were found only by driving the packaged binary.
+
+- `python tests/run_all.py` — the suite (needs network + credentials)
+- `python tests/rehearse_laptop.py` — drives the **frozen** sidecar
+- `python tests/check_real_app.py` — launches the real app, manual
+
+When adding a regression test, prove it **fails** against the buggy code
+before trusting it. One test here passed against the very bug it existed to
+catch, because it caught `Exception` and pyo3's `PanicException` is a
+`BaseException`.
+
+## Tools and their docs
+
+- Levels scanner: `docs/SCANNER.md` — scoring, weights, what is unvalidated.
+  The design rule is **rank, never hard-filter**.
+- Releases: `docs/RELEASING.md` — version in three places, minisign key,
+  `latest.json`.
